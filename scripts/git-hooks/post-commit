@@ -31,8 +31,8 @@ rec_dir="docs/修复记录"
 mkdir -p "$rec_dir"
 rec_path="$rec_dir/${fname_ts}-${short}.md"
 
-namestatus=$(git show --pretty=format: --name-status HEAD)
-stat=$(git diff-tree --no-commit-id --stat -r HEAD)
+namestatus=$(git -c core.quotepath=false show --pretty=format: --name-status HEAD)
+stat=$(git -c core.quotepath=false diff-tree --no-commit-id --stat -r HEAD)
 
 # 3) 写记录文件
 {
