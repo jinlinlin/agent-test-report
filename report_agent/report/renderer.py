@@ -21,8 +21,15 @@ def _module_table(stats: StatsResult) -> str:
 
 def _level_table(stats: StatsResult) -> str:
     rows = ["| 等级 | 缺陷总数 | 激活(待解决) | 已关闭 | 待验收 | 延期 |", "| --- | --- | --- | --- | --- | --- |"]
+    tt = ta = tc = tp = ts = 0
     for lv in stats.level_status_distribution:
         rows.append(f"| {lv.level} | {lv.total} | {lv.active} | {lv.closed} | {lv.pending_accept} | {lv.postponed} |")
+        tt += lv.total
+        ta += lv.active
+        tc += lv.closed
+        tp += lv.pending_accept
+        ts += lv.postponed
+    rows.append(f"| **总计** | **{tt}** | **{ta}** | **{tc}** | **{tp}** | **{ts}** |")
     return "\n".join(rows)
 
 
@@ -30,7 +37,6 @@ def render_report(stats: StatsResult) -> str:
     s = stats.summary
     v = stats.version
     c = stats.conclusion
-    ph = lambda item: T.PLACEHOLDER.format(item=item)  # noqa: E731
 
     parts = []
     parts.append(f"# {v.name or '版本'} 测试报告\n")
@@ -42,14 +48,17 @@ def render_report(stats: StatsResult) -> str:
     parts.append("### 1.2 缺陷管理工具\n")
     parts.append(T.DEFECT_TOOL + "\n")
     parts.append("### 1.3 参考文档\n")
-    parts.append(ph("参考文档链接") + "\n")
+    parts.append(T.REFERENCE_DOC_TABLE + "\n")
+    parts.append("> 链接待 V2 接入飞书自动填充。\n")
 
     # 2. 测试概要
     parts.append("## 2. 测试概要\n")
     parts.append("### 2.1 测试范围\n")
-    parts.append(ph("测试范围") + "\n")
+    parts.append(T.TEST_SCOPE_TABLE + "\n")
+    parts.append("> 模块清单可参照 4.1.1 缺陷分布自动列出；端/描述需人工或 V2 补齐。\n")
     parts.append("### 2.2 测试环境\n")
-    parts.append(ph("测试环境") + "\n")
+    parts.append(T.TEST_ENV_TABLE + "\n")
+    parts.append("> 地址与凭证涉敏，不自动写入报告，需人工确认补充。\n")
     parts.append("### 2.3 测试方法以及标准\n")
     parts.append("#### 2.3.1 测试方法\n")
     parts.append(T.TEST_METHOD + "\n")
@@ -59,7 +68,8 @@ def render_report(stats: StatsResult) -> str:
     # 3. 执行结果情况记录
     parts.append("## 3. 执行结果情况记录\n")
     parts.append("### 3.1 测试人员\n")
-    parts.append(ph("测试人员") + "\n")
+    parts.append(T.TESTER_TABLE + "\n")
+    parts.append("> 禅道版本信息通常不含人员清单，需 V2 接入飞书或人工补充。\n")
     parts.append("### 3.2 测试时间\n")
     parts.append("| 测试阶段 | 开始时间 | 结束时间 |")
     parts.append("| --- | --- | --- |")
@@ -73,14 +83,24 @@ def render_report(stats: StatsResult) -> str:
         f"待解决 {s.pending_resolve} 个，待验收 {s.pending_accept} 个，延期 {s.postponed} 个。"
         f"经核算，整体修复覆盖率为 {s.fix_coverage}。\n"
     )
+    parts.append(T.CHART_PLACEHOLDER.format(item="缺陷状态分布图（已关闭/待解决/待验收/延期）") + "\n")
     parts.append("#### 4.1.1 功能缺陷分布情况\n")
     parts.append(_module_table(stats) + "\n")
+    parts.append(T.CHART_PLACEHOLDER.format(item="各模块缺陷分布图") + "\n")
     parts.append("### 4.2 Bug 激活次数统计\n")
     parts.append(
-        f"本次缺陷总数 {s.total}，激活 ≥1 次的缺陷 {s.activated_ge1_count} 个，激活率 {s.activated_rate}。（V1 不渲染图表，仅呈现数值）\n"
+        f"本次缺陷总数 {s.total}，激活 ≥1 次的缺陷 {s.activated_ge1_count} 个，激活率 {s.activated_rate}。\n"
     )
+    parts.append(T.CHART_PLACEHOLDER.format(item="Bug 激活次数分布图") + "\n")
+    parts.append("### 4.3 每人提交 Bug 数统计\n")
+    parts.append("【待补充：每人提交 Bug 数统计，需按缺陷 openedBy 字段聚合，V2 实现】\n")
+    parts.append(T.CHART_PLACEHOLDER.format(item="每人提交 Bug 数柱状图") + "\n")
+    parts.append("### 4.4 每人解决 Bug 数统计\n")
+    parts.append("【待补充：每人解决 Bug 数统计，需按缺陷 resolvedBy 字段聚合，V2 实现】\n")
+    parts.append(T.CHART_PLACEHOLDER.format(item="每人解决 Bug 数柱状图") + "\n")
     parts.append("### 4.5 缺陷等级状态分布\n")
     parts.append(_level_table(stats) + "\n")
+    parts.append(T.CHART_PLACEHOLDER.format(item="缺陷等级×状态分布图") + "\n")
     parts.append("### 4.6 缺陷级别定义\n")
     parts.append(T.LEVEL_DEFINITION + "\n")
 
