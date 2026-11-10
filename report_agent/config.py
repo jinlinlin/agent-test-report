@@ -120,7 +120,7 @@ def load_config(settings_path: Path | str = SETTINGS_PATH, **overrides) -> Confi
             clarify_max_times=_get(_get(raw, "agent", {}), "clarify_max_times", 1),
         ),
         zentao=ZentaoConfig(
-            base_url=_get(_get(raw, "zentao", {}), "base_url", ""),
+            base_url=os.getenv("ZENTAO_BASE_URL", "") or _get(_get(raw, "zentao", {}), "base_url", ""),
             mode=_get(_get(raw, "zentao", {}), "mode", "mock"),
             timeout_seconds=_get(_get(raw, "zentao", {}), "timeout_seconds", 10),
             token=os.getenv("ZENTAO_TOKEN", "") or _get(_get(raw, "zentao", {}), "token", ""),

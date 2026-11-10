@@ -15,7 +15,9 @@ agent:
   clarify_max_times: 1   # 缺版本名时最多澄清次数（V1-007）
 
 zentao:
-  base_url: "http://192.168.2.208:81/zentao"
+  # 真实禅道地址请勿写入本文件（会随仓库入版本控制）：
+  # 在 config/.env（已 .gitignore）里设 ZENTAO_BASE_URL=http://<内网地址>/zentao，会覆盖下方占位。
+  base_url: "http://your-intranet-host/zentao"
   mode: "live"           # mock | live；接真实禅道改为 live
   timeout_seconds: 10
   api_prefix: "/api.php/v1"   # 禅道 RESTful API 前缀
