@@ -195,6 +195,35 @@ class FeishuClient:
             page = data.get("page_token", "")
         return items
 
+    def find_child_node(self, space_id: str, parent_node_token: str, title: str) -> str:
+        """在父节点下按标题**精确**查找子节点（归一化后全等），返回 node_token（无则空串）。
+
+        用于版本目录：在项目节点下找与版本号同名的子节点（如 V5.0.0），命中则复用不重建。
+        """
+        def _n(s: str) -> str:
+            s = str(s or "").lower()
+            for ch in "“”\"'  \t\u3000":
+                s = s.replace(ch, "")
+            return s
+
+        needle = _n(title)
+        if not needle:
+            return ""
+        for node in self.list_nodes(space_id, parent_node_token):
+            if _n(node.get("title", "")) == needle:
+                return node.get("node_token", "")
+        return ""
+
+    def create_node(self, space_id: str, parent_node_token: str, title: str) -> str:
+        """在父节点下新建一个空白 docx 知识节点（用作版本目录），返回新 node_token。
+
+        需 wiki:node:create 或 wiki:wiki 权限且对父节点有编辑权；失败抛 FeishuError 由上层回退处理。
+        """
+        payload = self._post(f"/wiki/v2/spaces/{space_id}/nodes",
+                             json_body={"obj_type": "docx", "parent_node_token": parent_node_token,
+                                        "node_type": "origin", "title": title})
+        return payload.get("data", {}).get("node", {}).get("node_token", "")
+
     def find_child_by_title(self, space_id: str, parent_node_token: str, name: str) -> str:
         """在容器节点下按标题找与产品名匹配的子节点，返回 node_token（无则空串）。
 

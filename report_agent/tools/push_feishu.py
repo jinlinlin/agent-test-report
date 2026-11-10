@@ -19,13 +19,13 @@ def _doc_name(version_name: str) -> str:
 
 class PushFeishuTool(Tool):
     name = "push_feishu"
-    description = "将渲染好的 Markdown 报告导入为飞书云文档并写入知识库节点（多项目：按产品名路由同名子节点），返回文档链接。由循环注入 report_markdown、version_name 与 product_name。"
-    parameters = {"report_markdown": "string(注入)", "version_name": "string(注入)", "product_name": "string(注入)"}
+    description = "将渲染好的 Markdown 报告导入为飞书云文档并写入知识库节点（多项目：按产品名路由同名子节点；同项目下按版本号建子目录），返回文档链接。由循环注入 report_markdown、version_name、product_name 与 build。"
+    parameters = {"report_markdown": "string(注入)", "version_name": "string(注入)", "product_name": "string(注入)", "build": "string(注入)"}
 
     def __init__(self, cfg) -> None:
         self.cfg = cfg
 
-    def run(self, report_markdown: str = "", version_name: str = "", product_name: str = "", **kwargs) -> ToolResult:
+    def run(self, report_markdown: str = "", version_name: str = "", product_name: str = "", build: str = "", **kwargs) -> ToolResult:
         f = self.cfg.feishu
 
         # 前置校验：任一不满足都如实返回失败，不做任何伪造
@@ -54,10 +54,11 @@ class PushFeishuTool(Tool):
                 return ToolResult(ok=False, error="导入完成但未返回文档 token")
 
             if f.target == "wiki":
-                parent = self._resolve_parent(client, f, product_name)
-                if not parent:
+                project_parent = self._resolve_parent(client, f, product_name)
+                if not project_parent:
                     return ToolResult(ok=False, error="未能确定知识库落点节点（产品无同名子节点且未配置默认落点）")
-                node_token = client.move_doc_to_wiki(f.wiki_space_id, parent, doc_token)
+                target_parent = self._resolve_version_node(client, f, project_parent, build)
+                node_token = client.move_doc_to_wiki(f.wiki_space_id, target_parent, doc_token)
                 url = f"{f.doc_base_url.rstrip('/')}/wiki/{node_token}"
             else:
                 url = f"{f.doc_base_url.rstrip('/')}/docx/{doc_token}"
@@ -73,3 +74,20 @@ class PushFeishuTool(Tool):
             if hit:
                 return hit
         return f.wiki_parent_node
+
+    @staticmethod
+    def _resolve_version_node(client: FeishuClient, f, project_parent: str, build: str) -> str:
+        """版本目录：在项目节点下找同名版本子节点（如 V5.0.0），命中则复用；缺失则新建。
+
+        无版本号、或新建失败（权限/异常）时回退为项目节点，不推翻报告。
+        """
+        if not build or not project_parent:
+            return project_parent
+        hit = client.find_child_node(f.wiki_space_id, project_parent, build)
+        if hit:
+            return hit
+        try:
+            created = client.create_node(f.wiki_space_id, project_parent, build)
+        except FeishuError:
+            return project_parent
+        return created or project_parent

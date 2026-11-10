@@ -138,3 +138,56 @@ def test_find_child_by_title_matches():
     assert c.find_child_by_title("sp", "parent", "一表通项目") == "N_YBT"
     assert c.find_child_by_title("sp", "parent", "不存在产品") == ""
     assert c.find_child_by_title("sp", "parent", "") == ""
+
+
+def test_find_child_node_exact():
+    """版本目录查找：按标题全等命中，部分匹配不算。"""
+    c = _NodesClient([
+        {"title": "V5.0.0", "node_token": "N500"},
+        {"title": "V5.1.0", "node_token": "N510"},
+    ])
+    assert c.find_child_node("sp", "p", "V5.0.0") == "N500"
+    assert c.find_child_node("sp", "p", "V5.0") == ""
+    assert c.find_child_node("sp", "p", "") == ""
+
+
+class _VersionClient:
+    def __init__(self, existing="", create_token="NEW", create_raises=False):
+        self._existing = existing
+        self._create_token = create_token
+        self._create_raises = create_raises
+        self.created = False
+
+    def find_child_node(self, space, parent, title):
+        return self._existing
+
+    def create_node(self, space, parent, title):
+        self.created = True
+        if self._create_raises:
+            from report_agent.tools.feishu_client import FeishuError
+            raise FeishuError("权限不足", "error")
+        return self._create_token
+
+
+def test_resolve_version_node_reuses_existing():
+    fc = _VersionClient(existing="V_NODE")
+    got = PushFeishuTool._resolve_version_node(fc, _WikiCfg(), "PROJ", "V5.0.0")
+    assert got == "V_NODE" and not fc.created
+
+
+def test_resolve_version_node_creates_when_missing():
+    fc = _VersionClient(existing="", create_token="NEW_NODE")
+    got = PushFeishuTool._resolve_version_node(fc, _WikiCfg(), "PROJ", "V5.0.0")
+    assert got == "NEW_NODE" and fc.created
+
+
+def test_resolve_version_node_no_build_falls_back():
+    fc = _VersionClient()
+    got = PushFeishuTool._resolve_version_node(fc, _WikiCfg(), "PROJ", "")
+    assert got == "PROJ" and not fc.created
+
+
+def test_resolve_version_node_create_failure_falls_back():
+    fc = _VersionClient(existing="", create_raises=True)
+    got = PushFeishuTool._resolve_version_node(fc, _WikiCfg(), "PROJ", "V5.0.0")
+    assert got == "PROJ"
