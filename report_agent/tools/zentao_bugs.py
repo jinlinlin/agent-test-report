@@ -63,4 +63,5 @@ class GetVersionBugsTool(Tool):
             "status": raw.get(z.field_status),
             "resolution": raw.get(z.field_resolution) or "",
             "activatedCount": raw.get(z.field_activated, 0),
+            "openedDate": raw.get(z.field_opened_date) or "",
         }

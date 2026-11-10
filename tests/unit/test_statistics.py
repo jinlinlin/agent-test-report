@@ -1,5 +1,5 @@
 """统计工具单元测试（对应需求文档 8.2 的 U-xxx）。"""
-from report_agent.tools.statistics import compute_statistics, status_bucket, level_of
+from report_agent.tools.statistics import compute_statistics, status_bucket, level_of, opened_date_range
 
 
 def _bug(module, severity, status, resolution, activated=0):
@@ -66,3 +66,37 @@ def test_activated_rate():
     r = compute_statistics({"name": "V", "fetch_status": "ok", "test_start": "a", "test_end": "b"}, bugs)
     assert r.summary.activated_ge1_count == 1
     assert r.summary.activated_rate == "50.00%"
+
+
+def _bug_dated(module, severity, status, resolution, opened):
+    b = _bug(module, severity, status, resolution)
+    b["openedDate"] = opened
+    return b
+
+
+def test_u009_test_time_from_opened_date_range():
+    """U-009：测试起止时间由本版本缺陷创建时间(openedDate)的 min/max 实算，优先于占位值（UTC→北京跨日）。"""
+    bugs = [
+        _bug_dated("/A", 3, "closed", "fixed", "2026-10-05T01:30:00Z"),   # 北京 2026-10-05 09:30
+        _bug_dated("/A", 3, "active", "", "2026-09-28T18:00:00Z"),           # 北京 2026-09-29 02:00
+        _bug_dated("/A", 2, "resolved", "fixed", "2026-10-01T12:00:00Z"),
+    ]
+    r = compute_statistics({"name": "V", "fetch_status": "ok", "test_start": "", "test_end": ""}, bugs)
+    assert r.version.test_start == "2026-09-29"   # 最早
+    assert r.version.test_end == "2026-10-05"      # 最晚
+    assert "测试起止时间" not in r.integrity.missing_fields
+
+
+def test_u010_test_time_fallback_when_no_dates():
+    """U-010：缺陷无可用创建时间时，回退到上游传入的配置/占位值。"""
+    r = compute_statistics(
+        {"name": "V", "fetch_status": "ok", "test_start": "2026-01-01", "test_end": "2026-02-02"},
+        [_bug("/A", 3, "closed", "fixed")],
+    )
+    assert r.version.test_start == "2026-01-01" and r.version.test_end == "2026-02-02"
+
+
+def test_opened_date_range_handles_null():
+    """空/null/零值日期均丢弃，无可用日期时返回空串。"""
+    bugs = [{"openedDate": "0000-00-00 00:00:00"}, {"openedDate": ""}, {"openedDate": None}]
+    assert opened_date_range(bugs) == ("", "")

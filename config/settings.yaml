@@ -32,7 +32,8 @@ zentao:
   field_resolution: "resolution"  # fixed | postponed | willnotfix | notrepro | duplicate | bydesign | external
   field_activated: "activatedCount"
   field_build: "openedBuild"      # 影响版本：禅道把“版本”建模为缺陷的 openedBuild（如 V5.0.0，可逗号多版本）
-  # 测试起止时间占位（禅道 REST 无干净的产品版本日期字段，需于报告前手填；留空则软性标注缺失，不阻断结论）
+  field_opened_date: "openedDate" # 缺陷创建时间（ISO8601 UTC）；测试起止时间由本版本缺陷该字段的 min/max 实算
+  # 测试起止时间：默认由缺陷创建时间实算（见上）；下方仅当缺陷无可用日期时作兜底或手工覆盖
   test_start: ""
   test_end: ""
 

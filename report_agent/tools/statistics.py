@@ -6,7 +6,8 @@
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, List, Optional
 
 from ..rules.release_engine import evaluate
 from ..schemas.contracts import (
@@ -63,6 +64,45 @@ def _pct(numerator: int, denominator: int) -> str:
     return f"{round(numerator / denominator * 100, 2):.2f}%"
 
 
+# 缺陷创建时间（zentao_bugs 规范化时写入的内部键）与北京时区
+_OPENED_DATE_KEY = "openedDate"
+_CN_TZ = timezone(timedelta(hours=8))
+_NULLISH = {"", "null", "none", "0000-00-00 00:00:00", "0000-00-00"}
+
+
+def _parse_dt(value: Any) -> Optional[datetime]:
+    """解析禅道时间（ISO8601 UTC，如 2026-11-09T02:01:28Z）为带时区 datetime；无法解析返回 None。"""
+    if value is None:
+        return None
+    s = str(value).strip()
+    if s.lower() in _NULLISH:
+        return None
+    iso = s[:-1] + "+00:00" if s.endswith("Z") else s
+    try:
+        dt = datetime.fromisoformat(iso)
+    except ValueError:
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+            try:
+                dt = datetime.strptime(s, fmt)
+                break
+            except ValueError:
+                continue
+        else:
+            return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=_CN_TZ)  # 无时区按禅道服务器北京时间处理
+    return dt
+
+
+def opened_date_range(bugs: List[Dict[str, Any]]) -> tuple:
+    """返回本版本缺陷创建时间的 (最早, 最晚)，按北京时间 YYYY-MM-DD；无可用日期时返回 ('', '')。"""
+    dates = [d for d in (_parse_dt(b.get(_OPENED_DATE_KEY)) for b in bugs) if d is not None]
+    if not dates:
+        return "", ""
+    lo, hi = min(dates), max(dates)
+    return lo.astimezone(_CN_TZ).strftime("%Y-%m-%d"), hi.astimezone(_CN_TZ).strftime("%Y-%m-%d")
+
+
 def compute_statistics(version_info: Dict[str, Any] | None, bugs: List[Dict[str, Any]] | None) -> StatsResult:
     bugs = bugs or []
     version_info = version_info or {}
@@ -74,6 +114,12 @@ def compute_statistics(version_info: Dict[str, Any] | None, bugs: List[Dict[str,
         test_end=version_info.get("test_end", ""),
         fetch_status=version_info.get("fetch_status", "ok"),
     )
+
+    # 测试起止时间：取本版本全部缺陷「创建时间(openedDate)」的最早/最晚（用户口径）；
+    # 能算出来就用它，否则回退到上游 version_info 传入的配置/占位值。
+    start, end = opened_date_range(bugs)
+    if start and end:
+        vi.test_start, vi.test_end = start, end
 
     total = len(bugs)
     bucket_total = {b: 0 for b in BUCKETS}

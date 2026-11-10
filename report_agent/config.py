@@ -52,7 +52,8 @@ class ZentaoConfig:
     field_resolution: str = "resolution"
     field_activated: str = "activatedCount"
     field_build: str = "openedBuild"   # 影响版本字段（禅道将版本建模为缺陷的 openedBuild）
-    # 测试起止时间占位（禅道 REST 无干净产品版本日期字段时手填，§10）
+    field_opened_date: str = "openedDate"  # 缺陷创建时间字段（用于实算测试起止时间）
+    # 测试起止时间：默认由本版本缺陷创建时间实算；此处仅在无可用日期时作兜底/手工覆盖（§10）
     test_start: str = ""
     test_end: str = ""
 
@@ -135,6 +136,7 @@ def load_config(settings_path: Path | str = SETTINGS_PATH, **overrides) -> Confi
             field_resolution=_get(_get(raw, "zentao", {}), "field_resolution", "resolution"),
             field_activated=_get(_get(raw, "zentao", {}), "field_activated", "activatedCount"),
             field_build=_get(_get(raw, "zentao", {}), "field_build", "openedBuild"),
+            field_opened_date=_get(_get(raw, "zentao", {}), "field_opened_date", "openedDate"),
             test_start=_get(_get(raw, "zentao", {}), "test_start", ""),
             test_end=_get(_get(raw, "zentao", {}), "test_end", ""),
         ),
