@@ -18,7 +18,7 @@ from typing import Any, Dict, Optional
 
 from .state import AgentState
 
-VERSION_PATTERN = re.compile(r"([A-Za-z\u4e00-\u9fa5]+\s*)?[Vv]?\d+\.\d+(?:\.\d+)?")
+VERSION_PATTERN = re.compile(r"([A-Za-z\u4e00-\u9fa5]+\s*)?[Vv]?\d+(?:\.\d+)+")
 
 
 @dataclass

@@ -37,9 +37,9 @@ def _extract_list(payload: Any, keys: List[str]) -> List[Dict[str, Any]]:
     return []
 
 
-# 版本号 token：优先带 V 前缀（V5.0.0），其次裸三段/两段号（5.0.0 / 5.0）
-_BUILD_RE = re.compile(r"[Vv]\d+\.\d+(?:\.\d+)?")
-_BUILD_RE_LOOSE = re.compile(r"\d+\.\d+(?:\.\d+)?")
+# 版本号 token：优先带 V 前缀（V5.0.0 / V6.6.7.2），其次裸多段号（5.0.0 / 6.6.7.2）；支持任意段数
+_BUILD_RE = re.compile(r"[Vv]\d+(?:\.\d+)+")
+_BUILD_RE_LOOSE = re.compile(r"\d+(?:\.\d+)+")
 
 
 def parse_version(version_name: str):

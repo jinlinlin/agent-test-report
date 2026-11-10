@@ -161,6 +161,15 @@ def test_parse_version():
     assert zc.parse_version("UniResearch V5.0.0") == ("UniResearch", "V5.0.0")
     assert zc.parse_version("UniResearch 5.0") == ("UniResearch", "5.0")
     assert zc.parse_version("UniResearch") == ("UniResearch", None)
+    # 多段（4 段）版本号不得被截断
+    assert zc.parse_version("助睿数智服务平台产品 V6.6.7.2") == ("助睿数智服务平台产品", "V6.6.7.2")
+
+
+def test_extract_version_name_multisegment():
+    """自然语言抽取版本号时，4 段版本号必须完整保留（回归：曾被截成 3 段）。"""
+    from report_agent.agent.planner import extract_version_name
+    assert extract_version_name("帮我生成 助睿数智服务平台产品 V6.6.7.2 的测试报告") == "助睿数智服务平台产品 V6.6.7.2"
+    assert extract_version_name("UniResearch V5.1.0") == "UniResearch V5.1.0"
 
 
 def test_build_matches_contains_semantics():
