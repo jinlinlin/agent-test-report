@@ -114,6 +114,31 @@ pytest -q
 > - **禅道状态映射（§10 已确认）**：`severity` 1–4、`status` active/resolved/closed、`resolution` fixed/postponed/willnotfix/bydesign… 均与配置默认一致，由 `statistics.status_bucket` 归类（已关闭优先，延期只认 postponed）。
 > - **测试起止时间（已实算）**：取「影响版本恰好等于本版本」的缺陷 `openedDate`（ISO8601 UTC）最早/最晚，转北京时间 `YYYY-MM-DD`（`statistics.opened_date_range` + `_build_exact`，排除多值跨版本带入）；仅无可用日期才回退 `zentao.test_start`/`test_end` 手填占位。
 
+### 一·b、多项目支持（产品自动识别 + 飞书按项目落点）
+
+支持在同一套配置下为多个禅道产品生成报告并分别推送到各自知识库节点，**无需为每个项目改代码**：
+
+- **产品识别不靠正则猜**：`get_version_info` 运行时拉一次禅道 `/products`，把每个**真实产品名**归一化（小写、去空格/引号）后，看你输入的那句话里是否包含它，命中多个取**最长**（最具体）者。禅道新增/改名产品，下次运行自动识别。产品清单每次运行现查、**不写死**；同一次运行内只拉一次 `/products`（客户端 `_products_cache` 缓存），`get_version_bugs` 直接复用上游解析结果不再重复取数。
+- **版本号兼容中文前缀**：`extract_build` 取「含点号数字的非空格 token 连同紧邻前缀」，故 `V5.1.0`、`理工1.0.0`、`6.6.7.2` 都能正确抽出，`parse_version` 也不会再把中文前缀泄漏进产品关键字。
+- **兜底默认产品**：整句里识别不到任何已有产品时回退 `zentao.default_product`（默认 `UniResearch`），可用 `.env` 的 `ZENTAO_DEFAULT_PRODUCT` 覆盖。
+- **飞书按项目落点**：在容器节点 `feishu.wiki_projects_parent`（如「项目测试」）下，用产品名匹配**同名子节点**（如 `Uniresearch项目测试` / `一表通项目测试`）作为落点；匹配不到回退 `feishu.wiki_parent_node` 默认落点；两者皆无则记 `feishu_error` 但**不推翻已生成的报告**。
+
+相关配置（`.env`，均 `.gitignore`）：
+
+```powershell
+ZENTAO_DEFAULT_PRODUCT=UniResearch            # 可选，识别不到产品时兜底
+FEISHU_WIKI_PROJECTS_PARENT=<项目容器 node_token>   # 其下每个项目一个同名子节点
+FEISHU_WIKI_PARENT_NODE=<兜底默认落点 node_token>
+```
+
+用法示例：
+
+```powershell
+python -m report_agent.main "帮我生成 一表通项目 理工1.0.0 的测试报告" --mode live --push-feishu
+```
+
+> 前提：知识库「项目容器」下每个项目的子节点标题包含对应产品名（当前 Uniresearch / 一表通 均如此）。若某新产品在禅道的产品名与知识库子节点标题差异过大导致匹配失败，会回退默认落点并如实记录，后续再考虑别名映射（本期不做手工别名表）。
+
 ### 二、接真实 LLM 规划
 
 1. 在 `config/.env` 填 `OPENAI_API_KEY`（OpenAI 兼容端点在 `settings.yaml` 的 `llm.base_url` 配置）。

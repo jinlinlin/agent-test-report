@@ -12,8 +12,9 @@ from typing import Tuple
 from .state import AgentState
 
 
-def should_terminate(state: AgentState, max_steps: int) -> Tuple[bool, str]:
-    if state.report_markdown is not None:
+def should_terminate(state: AgentState, max_steps: int, push_pending: bool = False) -> Tuple[bool, str]:
+    # 报告已生成且无待推送的飞书动作 → finished（若 push_pending 则继续循环走 push_feishu）
+    if state.report_markdown is not None and not push_pending:
         return True, "finished"
 
     # 版本信息已获取但失败：不再往下走，直接终止

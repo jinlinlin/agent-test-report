@@ -37,23 +37,42 @@ def _extract_list(payload: Any, keys: List[str]) -> List[Dict[str, Any]]:
     return []
 
 
-# 版本号 token：优先带 V 前缀（V5.0.0 / V6.6.7.2），其次裸多段号（5.0.0 / 6.6.7.2）；支持任意段数
-_BUILD_RE = re.compile(r"[Vv]\d+(?:\.\d+)+")
-_BUILD_RE_LOOSE = re.compile(r"\d+(?:\.\d+)+")
+# 版本号 token：含点号数字的非空格 token，连同紧邻前缀（兼容 V5.1.0 / 理工1.0.0 / 6.6.7.2）
+_BUILD_TOKEN_RE = re.compile(r"\S*\d+(?:\.\d+)+\S*")
+# 抽取后从首尾剥离的常见标点（版本号本身以数字结尾，剥离不影响主体）
+_STRIP_CHARS = "，,、。.；;：:！!？?（）()【】[]《》“”\"'`~—-/"
+
+
+def _norm(s: str) -> str:
+    """产品名/文本归一化：转小写并去除空白与中英文引号，用于包含匹配。"""
+    s = str(s or "").lower()
+    for ch in "“”\"'  \t\u3000":
+        s = s.replace(ch, "")
+    return s
+
+
+def extract_build(text: str) -> Optional[str]:
+    """从文本抽取版本号 token（含点号数字的非空格 token，连同紧邻前缀）。无则 None。
+
+    'UniResearch V5.1.0' -> 'V5.1.0'；'一表通项目 理工1.0.0' -> '理工1.0.0'；'6.6.7.2' -> '6.6.7.2'。
+    """
+    m = _BUILD_TOKEN_RE.search(text or "")
+    if not m:
+        return None
+    return m.group().strip(_STRIP_CHARS) or None
 
 
 def parse_version(version_name: str):
-    """把用户输入的「产品名 + 版本号」拆为 (product_keyword, build)。
+    """把「产品名 + 版本号」拆为 (product_keyword, build)。
 
-    禅道把“版本”建模为缺陷的 openedBuild，产品名为 UniResearch；因此需拆开：
+    build 用 extract_build 取（兼容中文前缀），keyword 为去掉 build 后的剩余文本。
     'UniResearch V5.0.0' -> ('UniResearch', 'V5.0.0')；无版本 token 时 build=None。
     """
     s = (version_name or "").strip()
-    m = _BUILD_RE.search(s) or _BUILD_RE_LOOSE.search(s)
-    if not m:
+    build = extract_build(s)
+    if not build:
         return s, None
-    build = m.group()
-    keyword = (s[: m.start()] + " " + s[m.end():]).strip()
+    keyword = s.replace(build, " ", 1).strip()
     return keyword, build
 
 
@@ -79,6 +98,7 @@ class ZentaoRestClient:
         self.z = cfg.zentao
         self.timeout = self.z.timeout_seconds
         self._token: Optional[str] = self.z.token or None
+        self._products_cache: Optional[List[Dict[str, Any]]] = None
 
     # ---- 内部 ----
     def _base(self) -> str:
@@ -143,27 +163,41 @@ class ZentaoRestClient:
             raise ZentaoError("禅道接口返回非 JSON", "error") from exc
 
     # ---- 业务查询 ----
-    def find_product(self, keyword: str) -> Optional[Dict[str, Any]]:
-        """按产品名关键字匹配 product：先精确（忽略大小写），再包含/前缀。分页遍历。"""
-        name_field = self.z.field_product_name
-        target = (keyword or "").strip().lower()
+    def _all_products(self) -> List[Dict[str, Any]]:
+        """分页拉取全部产品并缓存（运行内缓存）；同一次运行多次匹配只发一次 /products。"""
+        if self._products_cache is not None:
+            return self._products_cache
+        items_all: List[Dict[str, Any]] = []
         page = 1
-        contains_hit: Optional[Dict[str, Any]] = None
         while True:
             payload = self.get("/products", params={"limit": self.z.page_size, "page": page})
             items = _extract_list(payload, ["products", "data"])
             if not items:
                 break
-            for p in items:
-                nm = str(p.get(name_field, "")).strip().lower()
-                if nm == target:
-                    return p
-                if contains_hit is None and target and (target in nm or nm in target):
-                    contains_hit = p
+            items_all.extend(items)
             if len(items) < self.z.page_size:
                 break
             page += 1
-        return contains_hit
+        self._products_cache = items_all
+        return items_all
+
+    def find_product(self, text: str) -> Optional[Dict[str, Any]]:
+        """用禅道真实产品名在输入文本里做包含匹配（最长命中）。
+
+        将 text 归一化后，凡产品名归一化为其子串者均为候选，取名字最长（最具体）的一个。
+        不写死产品名单：新禅道产品下次运行自动识别。无命中返回 None。
+        """
+        name_field = self.z.field_product_name
+        hay = _norm(text)
+        if not hay:
+            return None
+        best: Optional[Dict[str, Any]] = None
+        best_len = -1
+        for p in self._all_products():
+            nm = _norm(p.get(name_field, ""))
+            if nm and nm in hay and len(nm) > best_len:
+                best, best_len = p, len(nm)
+        return best
 
     def get_product_bugs(self, product_id: Any) -> List[Dict[str, Any]]:
         """拉取某 product 的全部缺陷（分页）。

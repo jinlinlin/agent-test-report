@@ -45,6 +45,13 @@ class DeterministicPlanner:
 
     name = "deterministic"
 
+    def __init__(self, cfg=None) -> None:
+        self.cfg = cfg
+
+    def _should_push(self, state: AgentState) -> bool:
+        return bool(self.cfg and self.cfg.feishu.enabled
+                    and state.feishu_doc_url is None and not state.feishu_error)
+
     def next_action(self, state: AgentState) -> Action:
         if state.version_name is None:
             return Action(type="clarify", thought="输入未识别到版本名称，需向用户澄清")
@@ -73,6 +80,10 @@ class DeterministicPlanner:
 
         if state.report_markdown is None:
             return Action(type="tool", tool="render_report", args={}, thought="第四步：按章节结构渲染 Markdown 报告")
+
+        # 第五步（可选）：报告已生成且开启飞书推送时，推送至飞书知识库
+        if self._should_push(state):
+            return Action(type="tool", tool="push_feishu", args={}, thought="第五步：推送报告至飞书云文档/知识库")
 
         return Action(type="finish", thought="报告已生成，结束")
 
@@ -130,6 +141,7 @@ class LLMPlanner:
 
 
 def build_planner(cfg, llm_client, tool_specs) -> Any:
+    det = DeterministicPlanner(cfg)
     if cfg.llm.use_llm_planner and llm_client is not None and llm_client.available:
-        return LLMPlanner(llm_client, tool_specs)
-    return DeterministicPlanner()
+        return LLMPlanner(llm_client, tool_specs, fallback=det)
+    return det

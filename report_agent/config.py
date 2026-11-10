@@ -43,6 +43,7 @@ class ZentaoConfig:
     password: str = ""
     api_prefix: str = "/api.php/v1"
     page_size: int = 100
+    default_product: str = "UniResearch"   # 输入未能识别到产品时的兜底关键字
     # 字段映射（§10：不同禅道版本字段名可能不同，全部配置化，用 --probe 核对后调整）
     field_product_name: str = "name"
     field_product_desc: str = "desc"
@@ -56,6 +57,26 @@ class ZentaoConfig:
     # 测试起止时间：默认由本版本缺陷创建时间实算；此处仅在无可用日期时作兜底/手工覆盖（§10）
     test_start: str = ""
     test_end: str = ""
+
+
+@dataclass
+class FeishuConfig:
+    """飞书云文档/知识库推送配置（V2 技术验证脚手架）。
+
+    凭据（app_id/app_secret）与各 token 一律走 .env，不写进 settings.yaml；
+    enabled 默认 False，仅 --push-feishu 或显式开启才推送。
+    """
+    enabled: bool = False
+    app_id: str = ""
+    app_secret: str = ""
+    api_base: str = "https://open.feishu.cn/open-apis"
+    doc_base_url: str = "https://feishu.cn"   # 个人版为 https://my.feishu.cn，按租户改
+    target: str = "wiki"                       # wiki=导入后移动到知识库节点；drive=仅导入到云空间
+    upload_folder_token: str = ""              # 导入的临时上传落点（Drive folder_token）
+    wiki_space_id: str = ""                    # 知识库空间 ID
+    wiki_parent_node: str = ""                 # 兜底默认落点 node_token（无匹配子节点时用）
+    wiki_projects_parent: str = ""             # 各项目子节点的容器 node_token（按产品名在其下路由同名子节点）
+    import_poll_seconds: int = 30
 
 
 @dataclass
@@ -79,6 +100,7 @@ class Config:
     llm: LLMConfig = field(default_factory=LLMConfig)
     agent: AgentConfig = field(default_factory=AgentConfig)
     zentao: ZentaoConfig = field(default_factory=ZentaoConfig)
+    feishu: FeishuConfig = field(default_factory=FeishuConfig)
     mock: MockConfig = field(default_factory=MockConfig)
     trace: TraceConfig = field(default_factory=TraceConfig)
     report: ReportConfig = field(default_factory=ReportConfig)
@@ -128,6 +150,7 @@ def load_config(settings_path: Path | str = SETTINGS_PATH, **overrides) -> Confi
             password=os.getenv("ZENTAO_PASSWORD", "") or _get(_get(raw, "zentao", {}), "password", ""),
             api_prefix=_get(_get(raw, "zentao", {}), "api_prefix", "/api.php/v1"),
             page_size=_get(_get(raw, "zentao", {}), "page_size", 100),
+            default_product=os.getenv("ZENTAO_DEFAULT_PRODUCT", "") or _get(_get(raw, "zentao", {}), "default_product", "UniResearch"),
             field_product_name=_get(_get(raw, "zentao", {}), "field_product_name", "name"),
             field_product_desc=_get(_get(raw, "zentao", {}), "field_product_desc", "desc"),
             field_module=_get(_get(raw, "zentao", {}), "field_module", "module"),
@@ -139,6 +162,19 @@ def load_config(settings_path: Path | str = SETTINGS_PATH, **overrides) -> Confi
             field_opened_date=_get(_get(raw, "zentao", {}), "field_opened_date", "openedDate"),
             test_start=_get(_get(raw, "zentao", {}), "test_start", ""),
             test_end=_get(_get(raw, "zentao", {}), "test_end", ""),
+        ),
+        feishu=FeishuConfig(
+            enabled=str(_get(_get(raw, "feishu", {}), "enabled", "false")).lower() in ("1", "true", "yes", "on"),
+            app_id=os.getenv("FEISHU_APP_ID", "") or _get(_get(raw, "feishu", {}), "app_id", ""),
+            app_secret=os.getenv("FEISHU_APP_SECRET", "") or _get(_get(raw, "feishu", {}), "app_secret", ""),
+            api_base=_get(_get(raw, "feishu", {}), "api_base", "https://open.feishu.cn/open-apis"),
+            doc_base_url=os.getenv("FEISHU_DOC_BASE_URL", "") or _get(_get(raw, "feishu", {}), "doc_base_url", "https://feishu.cn"),
+            target=_get(_get(raw, "feishu", {}), "target", "wiki"),
+            upload_folder_token=os.getenv("FEISHU_FOLDER_TOKEN", "") or _get(_get(raw, "feishu", {}), "upload_folder_token", ""),
+            wiki_space_id=os.getenv("FEISHU_WIKI_SPACE_ID", "") or _get(_get(raw, "feishu", {}), "wiki_space_id", ""),
+            wiki_parent_node=os.getenv("FEISHU_WIKI_PARENT_NODE", "") or _get(_get(raw, "feishu", {}), "wiki_parent_node", ""),
+            wiki_projects_parent=os.getenv("FEISHU_WIKI_PROJECTS_PARENT", "") or _get(_get(raw, "feishu", {}), "wiki_projects_parent", ""),
+            import_poll_seconds=_get(_get(raw, "feishu", {}), "import_poll_seconds", 30),
         ),
         mock=MockConfig(fault=_get(_get(raw, "mock", {}), "fault", "none")),
         trace=TraceConfig(

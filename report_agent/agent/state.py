@@ -21,6 +21,9 @@ class AgentState:
     stats_obj: Optional[Any] = None          # StatsResult 对象，供渲染直接使用
     report_markdown: Optional[str] = None
 
+    feishu_doc_url: Optional[str] = None     # 飞书推送成功后的文档链接（V2）
+    feishu_error: str = ""                   # 飞书推送失败原因（非致命，不推翻报告）
+
     step: int = 0
     status: str = "running"                  # running | finished | failed | clarify | step_limit
     fail_reason: str = ""
@@ -36,5 +39,6 @@ class AgentState:
             "bugs_count": len(self.bugs) if self.bugs is not None else None,
             "has_stats": self.stats is not None,
             "has_report": self.report_markdown is not None,
+            "feishu_doc_url": self.feishu_doc_url,
             "fail_reason": self.fail_reason,
         }

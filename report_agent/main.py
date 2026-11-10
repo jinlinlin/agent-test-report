@@ -16,6 +16,7 @@ from .agent.planner import build_planner
 from .config import load_config
 from .llm.client import LLMClient
 from .tools.base import ToolRegistry
+from .tools.push_feishu import PushFeishuTool
 from .tools.render_report import RenderReportTool
 from .tools.statistics import ComputeStatisticsTool
 from .tools.zentao_bugs import GetVersionBugsTool
@@ -29,6 +30,7 @@ def build_registry(cfg) -> ToolRegistry:
     reg.register(GetVersionBugsTool(cfg))
     reg.register(ComputeStatisticsTool())
     reg.register(RenderReportTool())
+    reg.register(PushFeishuTool(cfg))
     return reg
 
 
@@ -44,7 +46,7 @@ def _safe_name(version_name: str) -> str:
     return "".join(ch if ch.isalnum() or ch in "._-" else "_" for ch in (version_name or "report"))
 
 
-def run_once(user_input: str, **overrides) -> tuple[Path | None, Path | None, str]:
+def run_once(user_input: str, **overrides) -> tuple[Path | None, Path | None, str, str | None]:
     cfg = load_config(**overrides)
     agent, tracer = build_agent(cfg)
     state = agent.run(user_input)
@@ -58,7 +60,7 @@ def run_once(user_input: str, **overrides) -> tuple[Path | None, Path | None, st
     # 落盘 Trace
     trace_path = tracer.save(f"{_safe_name(state.version_name or 'report')}.json")
 
-    return report_path, trace_path, state.status
+    return report_path, trace_path, state.status, state.feishu_doc_url
 
 
 def run_probe(version_name: str = "", **overrides) -> int:
@@ -118,6 +120,8 @@ def main(argv=None) -> int:
     parser.add_argument("--mode", default=None, help="禅道模式：mock|live")
     parser.add_argument("--probe", action="store_true",
                         help="禅道接入自检：验证认证/端点并打印真实字段名（需先配好 base_url 与账号）")
+    parser.add_argument("--push-feishu", action="store_true",
+                        help="生成后将报告推送至飞书云文档/知识库（需先在 .env 配好飞书凭据与 token）")
     args = parser.parse_args(argv)
 
     overrides = {}
@@ -127,6 +131,8 @@ def main(argv=None) -> int:
         overrides["agent.max_steps"] = args.max_steps
     if args.mode is not None:
         overrides["zentao.mode"] = args.mode
+    if args.push_feishu:
+        overrides["feishu.enabled"] = True
 
     if args.probe:
         return run_probe(args.user_input, **overrides)
@@ -134,13 +140,15 @@ def main(argv=None) -> int:
     if not args.user_input:
         parser.error("缺少版本名称输入（或使用 --probe 自检）")
 
-    report_path, trace_path, status = run_once(args.user_input, **overrides)
+    report_path, trace_path, status, feishu_url = run_once(args.user_input, **overrides)
 
     print(f"[状态] {status}")
     if report_path and report_path.exists():
         print(f"[报告] {report_path}")
     if trace_path and trace_path.exists():
         print(f"[Trace] {trace_path}")
+    if feishu_url:
+        print(f"[飞书] {feishu_url}")
     if status == "clarify":
         print("[澄清] 未识别到版本名称，请补充完整版本号后重试（例如：UniResearch V5.0.0）。")
     return 0 if status in ("finished", "clarify") else 1

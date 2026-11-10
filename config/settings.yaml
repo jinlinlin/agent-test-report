@@ -22,6 +22,7 @@ zentao:
   timeout_seconds: 10
   api_prefix: "/api.php/v1"   # 禅道 RESTful API 前缀
   page_size: 100              # 分页拉取每页条数
+  default_product: "UniResearch"  # 输入未能识别到产品时的兜底关键字（多项目靠真实产品名自动匹配）
   # 账号密码换 token（推荐放 .env 的 ZENTAO_ACCOUNT/ZENTAO_PASSWORD，不要写在这里）
   account: ""
   password: ""
@@ -38,6 +39,17 @@ zentao:
   # 测试起止时间：默认由缺陷创建时间实算（见上）；下方仅当缺陷无可用日期时作兜底或手工覆盖
   test_start: ""
   test_end: ""
+
+feishu:
+  # V2 技术验证：报告导入为飞书云文档并写入知识库。默认关闭，用 --push-feishu 临时开启。
+  # 凭据与各 token 一律放 config/.env（FEISHU_APP_ID/SECRET/FOLDER_TOKEN/WIKI_SPACE_ID/WIKI_PARENT_NODE），勿写这里。
+  enabled: false
+  api_base: "https://open.feishu.cn/open-apis"
+  doc_base_url: "https://feishu.cn"   # 个人版租户改为 https://my.feishu.cn
+  target: "wiki"                      # wiki=导入后移动到知识库节点；drive=仅导入到云空间文件夹
+  # 多项目落点：wiki_projects_parent=各项目子节点的容器（如“项目测试”），推送时按产品名在其下找同名子节点；
+  # wiki_parent_node=兜底默认落点（未匹配到子节点时用）。两者 node_token 均放 .env。
+  import_poll_seconds: 30
 
 mock:
   # F6 故障注入开关：none | not_found | timeout | error | empty_bugs

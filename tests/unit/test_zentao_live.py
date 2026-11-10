@@ -156,6 +156,61 @@ def test_bugs_live_error(fake):
     assert r.meta["fetch_status"] == "error"
 
 
+def test_bugs_live_uses_version_info(fake):
+    """优先消费上游 version_info 的 product_id+build：即使 find_product 会落空也不回退取数。"""
+    fake.product = None  # 若误走回退分支会 find_product=None → not_found
+    fake.raw_bugs = [
+        {"id": 1, "module": "/ A", "severity": 3, "status": "active", "resolution": "", "activatedCount": 0, "openedBuild": "V5.0.0"},
+    ]
+    cfg = load_config(**BASE)
+    r = GetVersionBugsTool(cfg).run(version_name="UniResearch V5.0.0",
+                                    version_info={"product_id": 7, "build": "V5.0.0"})
+    assert r.ok is True
+    assert r.meta["count"] == 1
+
+
+def test_bugs_live_cjk_build(fake):
+    """中文前缀版本号（理工1.0.0）能正确抽为 build 并按 openedBuild 命中。"""
+    fake.product = {"id": 20, "name": "一表通项目"}
+    fake.raw_bugs = [
+        {"id": 1, "module": "/ A", "severity": 2, "status": "active", "resolution": "", "activatedCount": 0, "openedBuild": "理工1.0.0"},
+        {"id": 2, "module": "/ B", "severity": 3, "status": "closed", "resolution": "fixed", "activatedCount": 0, "openedBuild": "理工2.0.0"},
+    ]
+    cfg = load_config(**BASE)
+    r = GetVersionBugsTool(cfg).run(version_name="一表通项目 理工1.0.0")
+    assert r.ok is True
+    assert r.meta["count"] == 1
+    assert r.data[0]["id"] == 1
+
+
+def test_extract_build():
+    """版本号 token 抽取：兼容 V 前缀、中文前缀、裸多段号；无点号数字返回 None。"""
+    assert zc.extract_build("理工1.0.0") == "理工1.0.0"
+    assert zc.extract_build("UniResearch V5.1.0") == "V5.1.0"
+    assert zc.extract_build("帮我生成 助睿数智服务平台产品 V6.6.7.2 的测试报告") == "V6.6.7.2"
+    assert zc.extract_build("无版本的一段话") is None
+
+
+def test_parse_version_cjk_prefix():
+    """中文前缀且产品名与版本被空格分开时，不得把前缀泄漏进产品关键字。"""
+    assert zc.parse_version("一表通项目 理工1.0.0") == ("一表通项目", "理工1.0.0")
+
+
+def test_find_product_name_in_text():
+    """用真实产品名在整句输入里做包含匹配（最长命中），不靠正则猜产品。"""
+    cfg = load_config(**BASE)
+    client = zc.ZentaoRestClient(cfg)
+    client._products_cache = [
+        {"id": 17, "name": "UniResearch"},
+        {"id": 20, "name": "一表通项目"},
+        {"id": 21, "name": "一表通"},
+    ]
+    hit = client.find_product("帮我生成 一表通项目 理工1.0.0 的测试报告")
+    assert hit is not None and hit["id"] == 20  # 最长命中“一表通项目”而非“一表通”
+    assert client.find_product("UniResearch V5.1.0")["id"] == 17
+    assert client.find_product("完全无关的句子") is None
+
+
 def test_parse_version():
     """版本全名拆为产品关键字 + 影响版本 token。"""
     assert zc.parse_version("UniResearch V5.0.0") == ("UniResearch", "V5.0.0")

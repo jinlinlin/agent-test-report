@@ -6,36 +6,39 @@ from .base import Tool, ToolResult
 
 class GetVersionInfoTool(Tool):
     name = "get_version_info"
-    description = "按版本名称精确匹配，获取版本描述与测试起止时间。入参：version_name（字符串）。"
-    parameters = {"version_name": "string"}
+    description = "按版本名称获取版本基础信息与所属产品（多项目：按真实产品名在整句输入里识别）。入参：version_name。"
+    parameters = {"version_name": "string", "user_input": "string(注入，供多项目产品识别)"}
 
     def __init__(self, cfg) -> None:
         self.cfg = cfg
 
-    def run(self, version_name: str = "", **kwargs) -> ToolResult:
+    def run(self, version_name: str = "", user_input: str = "", **kwargs) -> ToolResult:
         if self.cfg.zentao.mode == "mock":
             from . import mock_zentao
             return mock_zentao.fetch_version(version_name, self.cfg.mock.fault)
-        return self._run_live(version_name)
+        return self._run_live(version_name, (user_input or "").strip())
 
-    def _run_live(self, version_name: str) -> ToolResult:
-        # 接真实禅道 RESTful API：账号密码换 token → 拆「产品名 + 版本号」→ 按产品名关键字匹配 product。
-        # 禅道把“版本”建模为缺陷的 openedBuild（影响版本），产品为 UniResearch。
+    def _run_live(self, version_name: str, user_input: str = "") -> ToolResult:
+        # 接真实禅道 RESTful API：多项目不靠正则猜产品，而是拉 /products（运行内缓存）用
+        # 真实产品名在整句输入里做包含匹配；版本建模为缺陷的 openedBuild（兼容中文前缀如理工1.0.0）。
         # 只读（F7）：仅 GET，无任何写操作。
         from . import zentao_client as zc
 
-        keyword, build = zc.parse_version(version_name)
+        text = user_input or version_name
+        # 版本：优先从精简的 version_name 取，取不到再从整句取
+        build = zc.extract_build(version_name) or zc.extract_build(text)
         try:
             client = zc.ZentaoRestClient(self.cfg)
-            product = client.find_product(keyword)
+            product = client.find_product(text) or client.find_product(self.cfg.zentao.default_product)
         except zc.ZentaoError as exc:
             status = "timeout" if exc.kind == "timeout" else ("not_found" if exc.kind == "not_found" else "error")
             return ToolResult(ok=False, error=str(exc), meta={"fetch_status": status})
 
         if product is None:
-            return ToolResult(ok=False, error=f"未找到产品「{keyword}」", meta={"fetch_status": "not_found"})
+            return ToolResult(ok=False, error=f"未从输入中识别到禅道已有产品：{text}", meta={"fetch_status": "not_found"})
 
         z = self.cfg.zentao
+        product_name = str(product.get(z.field_product_name, "")).strip()
         # 报告标题用用户请求的版本全名；测试起止时间取配置占位（§10：禅道 REST 无干净的产品版本日期字段）
         return ToolResult(ok=True, data={
             "name": version_name,
@@ -43,6 +46,7 @@ class GetVersionInfoTool(Tool):
             "test_start": z.test_start,
             "test_end": z.test_end,
             "product_id": product.get("id"),
+            "product_name": product_name,
             "build": build or "",
             "fetch_status": "ok",
         })

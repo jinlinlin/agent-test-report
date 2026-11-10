@@ -6,31 +6,38 @@ from .base import Tool, ToolResult
 
 class GetVersionBugsTool(Tool):
     name = "get_version_bugs"
-    description = "获取指定版本的全部缺陷明细，字段含模块、等级(severity)、状态(status)、resolution、激活次数。入参：version_name。"
-    parameters = {"version_name": "string"}
+    description = "获取指定版本的全部缺陷明细，字段含模块、等级(severity)、状态(status)、resolution、激活次数。入参：version_name（优先复用上游 version_info）。"
+    parameters = {"version_name": "string", "version_info": "dict(注入)", "user_input": "string(注入)"}
 
     def __init__(self, cfg) -> None:
         self.cfg = cfg
 
-    def run(self, version_name: str = "", **kwargs) -> ToolResult:
+    def run(self, version_name: str = "", version_info: dict | None = None, user_input: str = "", **kwargs) -> ToolResult:
         if self.cfg.zentao.mode == "mock":
             from . import mock_zentao
             return mock_zentao.fetch_bugs(version_name, self.cfg.mock.fault)
-        return self._run_live(version_name)
+        return self._run_live(version_name, version_info, (user_input or "").strip())
 
-    def _run_live(self, version_name: str) -> ToolResult:
-        # 接真实禅道 RESTful API：拆「产品名 + 版本号」→ 定位 product → 分页拉全部缺陷
-        # → 按 openedBuild（影响版本）“包含即计入”过滤 → 逐条补拉详情取模块名。
-        # 只读（F7）：仅 GET，无任何写操作。
+    def _run_live(self, version_name: str, version_info: dict | None = None, user_input: str = "") -> ToolResult:
+        # 优先复用上游 get_version_info 已解析的 product_id + build（避免重复拉 /products、保证口径一致）；
+        # 无 version_info（如单测直调）时回退：从输入解析产品与版本。
+        # → 分页拉全部缺陷 → 按 openedBuild “包含即计入”过滤 → 逐条补拉详情取模块名。只读（F7）。
         from . import zentao_client as zc
 
-        keyword, build = zc.parse_version(version_name)
+        vi = version_info or {}
+        product_id = vi.get("product_id")
+        build = vi.get("build") or None
+        text = user_input or version_name
+        if product_id is None:
+            build = build or zc.extract_build(version_name) or zc.extract_build(text)
         try:
             client = zc.ZentaoRestClient(self.cfg)
-            product = client.find_product(keyword)
-            if product is None:
-                return ToolResult(ok=False, error=f"未找到产品「{keyword}」", meta={"fetch_status": "not_found"})
-            raw_bugs = client.get_product_bugs(product.get("id"))
+            if product_id is None:
+                product = client.find_product(text) or client.find_product(self.cfg.zentao.default_product)
+                if product is None:
+                    return ToolResult(ok=False, error=f"未从输入中识别到禅道已有产品：{text}", meta={"fetch_status": "not_found"})
+                product_id = product.get("id")
+            raw_bugs = client.get_product_bugs(product_id)
         except zc.ZentaoError as exc:
             status = "timeout" if exc.kind == "timeout" else ("not_found" if exc.kind == "not_found" else "error")
             return ToolResult(ok=False, error=str(exc), meta={"fetch_status": status})

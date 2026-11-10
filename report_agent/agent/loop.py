@@ -48,7 +48,7 @@ class ReportAgent:
             if state.status in ("failed", "finished", "step_limit", "clarify"):
                 break
 
-            terminate, reason = should_terminate(state, max_steps)
+            terminate, reason = should_terminate(state, max_steps, push_pending=self._push_pending(state))
             if terminate:
                 state.status = reason
                 break
@@ -77,6 +77,13 @@ class ReportAgent:
         return state
 
     # ---- 工具执行 ----
+    def _push_pending(self, state: AgentState) -> bool:
+        """飞书已启用、报告已生成、且尚未推送成功/未失败 → 还需执行一步 push_feishu。"""
+        return (self.cfg.feishu.enabled
+                and state.report_markdown is not None
+                and state.feishu_doc_url is None
+                and not state.feishu_error)
+
     def _exec_tool(self, action: Action, state: AgentState) -> ToolResult:
         tool = self.registry.get(action.tool)
         if tool is None:
@@ -84,11 +91,21 @@ class ReportAgent:
 
         kwargs = dict(action.args or {})
         # 由循环注入的依赖数据（规划器/LLM 无需搬运大对象）
-        if action.tool == "compute_statistics":
+        if action.tool == "get_version_info":
+            kwargs["user_input"] = state.user_input
+        elif action.tool == "get_version_bugs":
+            kwargs["version_info"] = state.version_info
+            kwargs["user_input"] = state.user_input
+        elif action.tool == "compute_statistics":
             kwargs["version_info"] = state.version_info
             kwargs["bugs"] = state.bugs
         elif action.tool == "render_report":
             kwargs["stats_obj"] = state.stats_obj
+        elif action.tool == "push_feishu":
+            kwargs["report_markdown"] = state.report_markdown
+            kwargs["version_name"] = state.version_name or ""
+            vi = state.version_info or {}
+            kwargs["product_name"] = vi.get("product_name", "")
 
         try:
             return tool.run(**kwargs)
@@ -96,6 +113,15 @@ class ReportAgent:
             return ToolResult(ok=False, error=f"工具执行异常：{exc}")
 
     def _apply_result(self, tool_name: str, result: ToolResult, state: AgentState) -> None:
+        # 飞书推送失败为非致命：记录原因，保留已生成的报告，不推翻主链路结果
+        if tool_name == "push_feishu":
+            if result.ok:
+                state.feishu_doc_url = result.data
+            else:
+                state.feishu_error = result.error or "飞书推送失败"
+            state.history.append({"tool": tool_name, "ok": result.ok})
+            return
+
         if not result.ok:
             # 取数失败：如实标注，终止（防幻觉，不重试编造）
             state.status = "failed"
@@ -111,7 +137,9 @@ class ReportAgent:
             state.stats_obj = result.meta.get("stats_obj")
         elif tool_name == "render_report":
             state.report_markdown = result.data
-            state.status = "finished"
+            # 若还需推送飞书，则暂不置 finished，交由规划器再走一步 push_feishu
+            if not self._push_pending(state):
+                state.status = "finished"
 
         state.history.append({"tool": tool_name, "ok": result.ok})
 
