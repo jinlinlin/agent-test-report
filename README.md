@@ -107,10 +107,11 @@ pytest -q
 > **实测确认的取数模型（已接入 192.168.2.208 禅道验证）**：
 > - **版本 ≠ 产品**：禅道把「版本」建模为缺陷的 `openedBuild`（影响版本，如 `V5.0.0`），产品为 `UniResearch`（product）。`parse_version` 把「UniResearch V5.0.0」拆成产品关键字 `UniResearch` + 版本号 `V5.0.0`，先按产品名匹配 product，再按其缺陷的 `openedBuild` 过滤。
 > - **跨版本带入（§10 已拍板：包含即计入）**：`openedBuild` 可为逗号多版本串（如 `V5.0.0,V5.1.0`），`build_matches` 按 token 精确（忽略大小写）判定是否含本版本，避免 `V5.0` 误配 `V5.0.0`。
+> - **版本存在性判定（V1-002）**：该禅道 REST 无独立 `builds` 接口（`/products/{id}/builds` 返回 404，产品详情的 `builds` 仅为计数），故以「产品全部缺陷的 `openedBuild` 取值集合」作为版本存在性信号——指定了版本号但集合中不含它即判定「版本不存在」，产出失败说明版报告并终止（不编造、不重试）。局限：live 下「版本存在但零缺陷」无法与「不存在」区分，按不存在处理；零缺陷场景由 mock `empty_bugs` 覆盖。
 > - **模块名（§10 已拍板：逐条补拉）**：列表接口 `/products/{id}/bugs` 的 `module` 为模块 ID；模块名从单条 `GET /bugs/{id}` 的 `moduleTitle` 补拉（`ZentaoRestClient.get_bug`，失败回退 ID）。
 > - **数据完整性（关键）——必须 `status=all`**：禅道 `/products/{id}/bugs` 默认视图只返回未关闭缺陷（active/resolved），closed 全部缺失，会导致缺陷总数/修复覆盖率严重偏低（实测 V5.1.0 默认 50 vs `status=all` 193）。`get_product_bugs` 已固定传 `status=all` 并以 `response.total` 取全分页。注意：`status=closed` 单独传返回 0、`browseType=all` 仍返回 240，只有 `status=all` 能拿到含 closed 的全量。
 > - **禅道状态映射（§10 已确认）**：`severity` 1–4、`status` active/resolved/closed、`resolution` fixed/postponed/willnotfix/bydesign… 均与配置默认一致，由 `statistics.status_bucket` 归类（已关闭优先，延期只认 postponed）。
-> - **测试起止时间（§10：维持占位）**：禅道 REST 无干净的产品版本日期字段，`zentao.test_start`/`test_end` 手填；留空则报告标注「待补充」，仅作软性缺口不阻断发布结论。
+> - **测试起止时间（已实算）**：取「影响版本恰好等于本版本」的缺陷 `openedDate`（ISO8601 UTC）最早/最晚，转北京时间 `YYYY-MM-DD`（`statistics.opened_date_range` + `_build_exact`，排除多值跨版本带入）；仅无可用日期才回退 `zentao.test_start`/`test_end` 手填占位。
 
 ### 二、接真实 LLM 规划
 

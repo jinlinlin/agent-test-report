@@ -39,6 +39,12 @@ class GetVersionBugsTool(Tool):
         field_build = self.cfg.zentao.field_build
         scoped = [b for b in raw_bugs if zc.build_matches(b.get(field_build), build)]
 
+        # 版本存在性判定（V1-002）：禅道把「版本」建模为缺陷 openedBuild，且该 REST 无独立 builds 接口；
+        # 指定了版本号但该产品的全部缺陷 openedBuild 都不含它 → 判定版本不存在，终止且不编造。
+        # 注：live 下「版本存在但零缺陷」无法与「不存在」区分，此情形按不存在处理；零缺陷场景由 mock empty_bugs 覆盖。
+        if build and not scoped:
+            return ToolResult(ok=False, error=f"版本不存在：{build}", meta={"fetch_status": "not_found", "count": 0})
+
         bugs = []
         for raw in scoped:
             detail = client.get_bug(raw.get("id"))  # 列表接口无模块名，从详情 moduleTitle 补拉

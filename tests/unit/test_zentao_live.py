@@ -106,6 +106,32 @@ def test_bugs_live_excludes_other_version(fake):
     assert {b["id"] for b in r.data} == {1, 3}
 
 
+def test_bugs_live_version_not_found(fake):
+    """V1-002 live：指定版本号在产品全部缺陷 openedBuild 中均不存在 → 判定版本不存在（ok=False/not_found）。"""
+    fake.product = {"id": 7, "name": "UniResearch"}
+    fake.raw_bugs = [
+        {"id": 1, "module": "/ A", "severity": 3, "status": "active", "resolution": "", "activatedCount": 0, "openedBuild": "V5.0.0"},
+        {"id": 2, "module": "/ B", "severity": 3, "status": "closed", "resolution": "fixed", "activatedCount": 0, "openedBuild": "V5.1.0,V5.0.0"},
+    ]
+    cfg = load_config(**BASE)
+    r = GetVersionBugsTool(cfg).run(version_name="UniResearch V0.9.1")
+    assert r.ok is False
+    assert r.meta["fetch_status"] == "not_found"
+    assert "版本不存在" in (r.error or "")
+
+
+def test_bugs_live_empty_but_version_exists(fake):
+    """版本号在 openedBuild 集合中存在（即使本例子只 1 条）应正常返回，不误判为不存在。"""
+    fake.product = {"id": 7, "name": "UniResearch"}
+    fake.raw_bugs = [
+        {"id": 1, "module": "/ A", "severity": 3, "status": "active", "resolution": "", "activatedCount": 0, "openedBuild": "V0.9.1"},
+    ]
+    cfg = load_config(**BASE)
+    r = GetVersionBugsTool(cfg).run(version_name="UniResearch V0.9.1")
+    assert r.ok is True
+    assert r.meta["count"] == 1
+
+
 def test_bugs_live_custom_field_mapping(fake, monkeypatch):
     """字段名走配置：模拟禅道返回非标准字段名。"""
     fake.product = {"id": 9, "name": "UniResearch V5.0.0"}
