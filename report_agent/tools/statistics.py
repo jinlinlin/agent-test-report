@@ -94,9 +94,24 @@ def _parse_dt(value: Any) -> Optional[datetime]:
     return dt
 
 
-def opened_date_range(bugs: List[Dict[str, Any]]) -> tuple:
-    """返回本版本缺陷创建时间的 (最早, 最晚)，按北京时间 YYYY-MM-DD；无可用日期时返回 ('', '')。"""
-    dates = [d for d in (_parse_dt(b.get(_OPENED_DATE_KEY)) for b in bugs) if d is not None]
+def _build_exact(value: Any, build: str) -> bool:
+    """影响版本「完全等于」目标版本（单值精确匹配）；多值带入（如 'V5.0.0, V5.1.0'）不算。
+    build 为空时不过滤（兼容 mock / 无版本 token 场景）。"""
+    if not build:
+        return True
+    return str(value or "").strip().lower() == str(build).strip().lower()
+
+
+def opened_date_range(bugs: List[Dict[str, Any]], target_build: str = "") -> tuple:
+    """返回测试起止 (最早, 最晚)：只统计影响版本恰好等于 target_build 的缺陷 openedDate，
+    排除跨版本带入的多值缺陷；按北京时间 YYYY-MM-DD；无可用日期时返回 ('', '')。"""
+    dates = [
+        d for d in (
+            _parse_dt(b.get(_OPENED_DATE_KEY))
+            for b in bugs
+            if _build_exact(b.get("openedBuild", ""), target_build)
+        ) if d is not None
+    ]
     if not dates:
         return "", ""
     lo, hi = min(dates), max(dates)
@@ -115,9 +130,9 @@ def compute_statistics(version_info: Dict[str, Any] | None, bugs: List[Dict[str,
         fetch_status=version_info.get("fetch_status", "ok"),
     )
 
-    # 测试起止时间：取本版本全部缺陷「创建时间(openedDate)」的最早/最晚（用户口径）；
-    # 能算出来就用它，否则回退到上游 version_info 传入的配置/占位值。
-    start, end = opened_date_range(bugs)
+    # 测试起止时间：只取「影响版本恰好等于本版本」的缺陷创建时间(openedDate) 的最早/最晚，
+    # 排除跨版本带入的多值缺陷（其创建时间可能属历史版本，会污染时间范围）；算不出则回退配置占位。
+    start, end = opened_date_range(bugs, version_info.get("build") or "")
     if start and end:
         vi.test_start, vi.test_end = start, end
 

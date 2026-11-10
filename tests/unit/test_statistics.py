@@ -100,3 +100,20 @@ def test_opened_date_range_handles_null():
     """空/null/零值日期均丢弃，无可用日期时返回空串。"""
     bugs = [{"openedDate": "0000-00-00 00:00:00"}, {"openedDate": ""}, {"openedDate": None}]
     assert opened_date_range(bugs) == ("", "")
+
+
+def test_u011_test_time_only_exact_build():
+    """U-011：测试起止只取影响版本恰好等于目标版本的缺陷，排除多值带入（如 'V5.0.0, V5.1.0'）的历史缺陷。"""
+    bugs = [
+        {"module": "/A", "severity": 3, "status": "closed", "resolution": "fixed", "activatedCount": 0,
+         "openedBuild": "V5.1.0", "openedDate": "2026-03-01T00:00:00Z"},          # 精确匹配，计入
+        {"module": "/A", "severity": 3, "status": "closed", "resolution": "fixed", "activatedCount": 0,
+         "openedBuild": "V5.0.0, V5.1.0", "openedDate": "2025-12-10T00:00:00Z"},  # 多值带入，排除
+        {"module": "/A", "severity": 2, "status": "active", "resolution": "", "activatedCount": 0,
+         "openedBuild": "V5.1.0", "openedDate": "2026-03-20T00:00:00Z"},          # 精确匹配，计入
+    ]
+    r = compute_statistics({"name": "UniResearch V5.1.0", "build": "V5.1.0",
+                            "fetch_status": "ok", "test_start": "", "test_end": ""}, bugs)
+    assert r.version.test_start == "2026-03-01"   # 而非被多值缺陷拖到 2025-12-10
+    assert r.version.test_end == "2026-03-20"
+    assert r.summary.total == 3                    # 总数仍按包含即计入（由上游已过滤），不受时间口径影响

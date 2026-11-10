@@ -1,3 +1,2 @@
-# 保持钩子脚本与自动生成的修复记录为 LF，避免 Windows 下 CRLF 破坏 shebang / 刷转换警告
-scripts/git-hooks/post-commit text eol=lf
+# 自动生成的修复记录保持 LF，避免 Windows 下 CRLF 触发转换警告
 docs/修复记录/*.md text eol=lf
