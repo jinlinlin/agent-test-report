@@ -64,6 +64,7 @@ class GetVersionBugsTool(Tool):
         列表接口的 module 为模块 ID；模块名从单条详情的 moduleTitle 取，缺失则回退到 ID。
         """
         z = self.cfg.zentao
+        from . import zentao_client as zc
         module = None
         if detail:
             module = detail.get("moduleTitle")
@@ -78,4 +79,6 @@ class GetVersionBugsTool(Tool):
             "activatedCount": raw.get(z.field_activated, 0),
             "openedDate": raw.get(z.field_opened_date) or "",
             "openedBuild": raw.get(z.field_build) or "",
+            "openedBy": zc.person_name(raw.get(z.field_opened_by)),
+            "resolvedBy": zc.person_name(raw.get(z.field_resolved_by)),
         }

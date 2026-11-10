@@ -39,6 +39,8 @@ class GetVersionInfoTool(Tool):
 
         z = self.cfg.zentao
         product_name = str(product.get(z.field_product_name, "")).strip()
+        # 项目负责人：仅当配置了 field_product_owner 时从产品对象取（取到人名、取不到留空）；不默认猜测字段，避免张冠李戴。
+        project_owner = zc.person_name(product.get(z.field_product_owner)) if z.field_product_owner else ""
         # 报告标题用用户请求的版本全名；测试起止时间取配置占位（§10：禅道 REST 无干净的产品版本日期字段）
         return ToolResult(ok=True, data={
             "name": version_name,
@@ -47,6 +49,7 @@ class GetVersionInfoTool(Tool):
             "test_end": z.test_end,
             "product_id": product.get("id"),
             "product_name": product_name,
+            "project_owner": project_owner,
             "build": build or "",
             "fetch_status": "ok",
         })

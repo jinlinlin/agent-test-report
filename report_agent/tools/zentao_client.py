@@ -43,6 +43,17 @@ _BUILD_TOKEN_RE = re.compile(r"\S*\d+(?:\.\d+)+\S*")
 _STRIP_CHARS = "，,、。.；;：:！!？?（）()【】[]《》“”\"'`~—-/"
 
 
+def person_name(value: Any) -> str:
+    """从禅道人员字段取显示名：禅道 REST 常将 openedBy/resolvedBy/PO 等返回为用户对象
+    （含 realname/account/id），此处优先取 realname、后退 account；若为纯字符串则直接返回。
+    无任何值时返回空串（上层如实标注待补充，不编造）。"""
+    if isinstance(value, dict):
+        return str(value.get("realname") or value.get("account") or "").strip()
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
 def _norm(s: str) -> str:
     """产品名/文本归一化：转小写并去除空白与中英文引号，用于包含匹配。"""
     s = str(s or "").lower()

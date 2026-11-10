@@ -33,6 +33,24 @@ def _level_table(stats: StatsResult) -> str:
     return "\n".join(rows)
 
 
+def _tester_table(stats: StatsResult) -> str:
+    """3.1 测试人员表：由本版本缺陷 openedBy/resolvedBy 如实聚合；无数据则标【待补充】。"""
+    p = stats.people
+
+    def _names(lst):
+        return "、".join(lst) if lst else "【待补充】"
+
+    rows = [
+        "| 岗位角色 | 人员姓名 |",
+        "| --- | --- |",
+        f"| 项目负责人 | {p.project_owner or '【待补充：未配置 field_product_owner】'} |",
+        f"| 测试负责人 | {_names(p.test_lead)} |",
+        f"| 软件工程师（开发、运维） | {_names(p.developers)} |",
+        f"| 测试人员 | {_names(p.testers)} |",
+    ]
+    return "\n".join(rows)
+
+
 def render_report(stats: StatsResult) -> str:
     s = stats.summary
     v = stats.version
@@ -68,8 +86,8 @@ def render_report(stats: StatsResult) -> str:
     # 3. 执行结果情况记录
     parts.append("## 3. 执行结果情况记录\n")
     parts.append("### 3.1 测试人员\n")
-    parts.append(T.TESTER_TABLE + "\n")
-    parts.append("> 禅道版本信息通常不含人员清单，需 V2 接入飞书或人工补充。\n")
+    parts.append(_tester_table(stats) + "\n")
+    parts.append("> 测试负责人/测试人员由本版本缺陷提交人(openedBy)、软件工程师由解决人(resolvedBy)如实聚合（仅当前版本，取禅道用户真实姓名 realname）；项目负责人需在产品对象上配置 field_product_owner 字段，未配置或未取到时如实标注待补充。\n")
     parts.append("### 3.2 测试时间\n")
     parts.append("| 测试阶段 | 开始时间 | 结束时间 |")
     parts.append("| --- | --- | --- |")

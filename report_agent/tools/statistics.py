@@ -15,6 +15,7 @@ from ..schemas.contracts import (
     Integrity,
     LevelStatus,
     ModuleDist,
+    People,
     StatsResult,
     Summary,
     VersionInfo,
@@ -118,6 +119,26 @@ def opened_date_range(bugs: List[Dict[str, Any]], target_build: str = "") -> tup
     return lo.astimezone(_CN_TZ).strftime("%Y-%m-%d"), hi.astimezone(_CN_TZ).strftime("%Y-%m-%d")
 
 
+def collect_people(bugs: List[Dict[str, Any]], target_build: str = "") -> Dict[str, List[str]]:
+    """从「影响版本恰好等于本版本」的缺陷聚合人员（仅当前版本，排除跨版本带入）。
+
+    返回：reporters=提交人去重（openedBy）、developers=解决人去重（resolvedBy）；保留首次出现顺序。
+    无任何数据则返回空列表（上层如实标注待补充，不编造）。
+    """
+    reporters: List[str] = []
+    developers: List[str] = []
+    for b in bugs:
+        if not _build_exact(b.get("openedBuild", ""), target_build):
+            continue
+        ob = str(b.get("openedBy") or "").strip()
+        rb = str(b.get("resolvedBy") or "").strip()
+        if ob and ob not in reporters:
+            reporters.append(ob)
+        if rb and rb not in developers:
+            developers.append(rb)
+    return {"reporters": reporters, "developers": developers}
+
+
 def compute_statistics(version_info: Dict[str, Any] | None, bugs: List[Dict[str, Any]] | None) -> StatsResult:
     bugs = bugs or []
     version_info = version_info or {}
@@ -188,6 +209,15 @@ def compute_statistics(version_info: Dict[str, Any] | None, bugs: List[Dict[str,
 
     conclusion: Conclusion = evaluate(level_status_distribution, total)
 
+    # 3.1 测试人员：仅按「影响版本恰好等于本版本」的缺陷聚合 openedBy/resolvedBy（仅当前版本）
+    people_raw = collect_people(bugs, version_info.get("build") or "")
+    people = People(
+        project_owner=str(version_info.get("project_owner") or ""),
+        test_lead=list(people_raw["reporters"]),
+        testers=list(people_raw["reporters"]),
+        developers=list(people_raw["developers"]),
+    )
+
     missing: List[str] = []
     if not vi.test_start or not vi.test_end:
         # 测试起止时间缺失仅作软性缺口标注，不阻断结论判定
@@ -203,6 +233,7 @@ def compute_statistics(version_info: Dict[str, Any] | None, bugs: List[Dict[str,
         level_status_distribution=level_status_distribution,
         conclusion=conclusion,
         integrity=integrity,
+        people=people,
     )
 
 

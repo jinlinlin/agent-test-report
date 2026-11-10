@@ -1,5 +1,11 @@
 """统计工具单元测试（对应需求文档 8.2 的 U-xxx）。"""
-from report_agent.tools.statistics import compute_statistics, status_bucket, level_of, opened_date_range
+from report_agent.tools.statistics import (
+    collect_people,
+    compute_statistics,
+    status_bucket,
+    level_of,
+    opened_date_range,
+)
 
 
 def _bug(module, severity, status, resolution, activated=0):
@@ -117,3 +123,45 @@ def test_u011_test_time_only_exact_build():
     assert r.version.test_start == "2026-03-01"   # 而非被多值缺陷拖到 2025-12-10
     assert r.version.test_end == "2026-03-20"
     assert r.summary.total == 3                    # 总数仍按包含即计入（由上游已过滤），不受时间口径影响
+
+
+def test_collect_people_exact_version_only():
+    """仅当前版本：openedBy/resolvedBy 去重，多值带入缺陷不计入；空值不入选。"""
+    bugs = [
+        {"openedBuild": "V5.1.0", "openedBy": "tester_a", "resolvedBy": "dev_wang"},
+        {"openedBuild": "V5.1.0", "openedBy": "tester_a", "resolvedBy": "dev_zhao"},   # 提交人重复
+        {"openedBuild": "V5.1.0", "openedBy": "tester_b", "resolvedBy": ""},           # 未解决，无解决人
+        {"openedBuild": "V5.0.0, V5.1.0", "openedBy": "tester_x", "resolvedBy": "dev_x"},  # 多值带入，排除
+    ]
+    p = collect_people(bugs, "V5.1.0")
+    assert p["reporters"] == ["tester_a", "tester_b"]
+    assert p["developers"] == ["dev_wang", "dev_zhao"]
+
+
+def test_compute_statistics_people_into_31():
+    """compute_statistics 将本版本提交/解决人写入 people，供 3.1 渲染。"""
+    bugs = [
+        {"module": "/A", "severity": 3, "status": "closed", "resolution": "fixed",
+         "activatedCount": 0, "openedBuild": "V5.1.0", "openedBy": "tester_a", "resolvedBy": "dev_wang"},
+        {"module": "/A", "severity": 3, "status": "active", "resolution": "",
+         "activatedCount": 0, "openedBuild": "V5.1.0", "openedBy": "tester_b", "resolvedBy": ""},
+    ]
+    r = compute_statistics({"name": "UniResearch V5.1.0", "build": "V5.1.0", "fetch_status": "ok"}, bugs)
+    assert r.people.test_lead == ["tester_a", "tester_b"]
+    assert r.people.testers == ["tester_a", "tester_b"]
+    assert r.people.developers == ["dev_wang"]
+    assert r.people.project_owner == ""   # 未取到时留空，渲染层标待补充
+
+
+def test_render_31_marks_placeholder_when_no_project_owner():
+    """渲染层：有提交/解决人则填入，项目负责人缺失时标【待补充】。"""
+    from report_agent.report.renderer import render_report
+    bugs = [
+        {"module": "/A", "severity": 3, "status": "closed", "resolution": "fixed",
+         "activatedCount": 0, "openedBuild": "V5.1.0", "openedBy": "tester_a", "resolvedBy": "dev_wang"},
+    ]
+    r = compute_statistics({"name": "UniResearch V5.1.0", "build": "V5.1.0", "fetch_status": "ok"}, bugs)
+    md = render_report(r)
+    assert "| 测试负责人 | tester_a |" in md
+    assert "| 软件工程师（开发、运维） | dev_wang |" in md
+    assert "项目负责人 | 【待补充" in md

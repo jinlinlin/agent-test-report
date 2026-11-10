@@ -140,6 +140,16 @@ python -m report_agent.main "帮我生成 一表通项目 理工1.0.0 的测试�
 
 > 前提：知识库「项目容器」下每个项目的子节点标题包含对应产品名（当前 Uniresearch / 一表通 均如此）。若某新产品在禅道的产品名与知识库子节点标题差异过大导致匹配失败，会回退默认落点并如实记录，后续再考虑别名映射（本期不做手工别名表）。
 
+### 一·c、测试人员（3.1）自动取数
+
+报告 3.1 的岗位人员不再写死占位，而是从**当前版本**的缺陷数据如实聚合（严格按影响版本「恰好等于本版本」，排除跨版本带入）：
+
+- **测试负责人 / 测试人员**：本版本缺陷的提交人 `openedBy` 去重。
+- **软件工程师（开发、运维）**：本版本缺陷的解决人 `resolvedBy` 去重。
+- **项目负责人**：从产品对象取，但需先在配置里指定字段名（`zentao.field_product_owner`，如 `PO`/`PM`）；**未配置时一律留【待补充】，不默认猜字段以免张冠李戴**。
+
+禅道 REST 把 `openedBy/resolvedBy`（及产品负责人字段）返回为**用户对象**（含 `realname`/`account`/`id`），系统统一取 `realname` 作为显示名（无则退 `account`）。字段名可配置（`settings.yaml` 的 `zentao.field_opened_by` / `field_resolved_by` / `field_product_owner`）。跑 `python -m report_agent.main --probe` 会打印产品对象及其**疑似负责人字段**（值为用户对象或键名含 owner/PO/PM/RD 的项），据此把正确键名填进 `field_product_owner`（或 `.env` 的 `ZENTAO_FIELD_PRODUCT_OWNER`）。取不到任何人员时对应格标【待补充】。
+
 ### 二、接真实 LLM 规划
 
 1. 在 `config/.env` 填 `OPENAI_API_KEY`（OpenAI 兼容端点在 `settings.yaml` 的 `llm.base_url` 配置）。

@@ -54,6 +54,9 @@ class ZentaoConfig:
     field_activated: str = "activatedCount"
     field_build: str = "openedBuild"   # 影响版本字段（禅道将版本建模为缺陷的 openedBuild）
     field_opened_date: str = "openedDate"  # 缺陷创建时间字段（用于实算测试起止时间）
+    field_opened_by: str = "openedBy"      # 缺陷提交人（测试人员/测试负责人来源）
+    field_resolved_by: str = "resolvedBy"  # 缺陷解决人（软件工程师来源）
+    field_product_owner: str = ""          # 项目负责人在产品对象上的字段名（留空则不取、标待补充；用 --probe 核对后填 PO/PM 等）
     # 测试起止时间：默认由本版本缺陷创建时间实算；此处仅在无可用日期时作兜底/手工覆盖（§10）
     test_start: str = ""
     test_end: str = ""
@@ -160,6 +163,9 @@ def load_config(settings_path: Path | str = SETTINGS_PATH, **overrides) -> Confi
             field_activated=_get(_get(raw, "zentao", {}), "field_activated", "activatedCount"),
             field_build=_get(_get(raw, "zentao", {}), "field_build", "openedBuild"),
             field_opened_date=_get(_get(raw, "zentao", {}), "field_opened_date", "openedDate"),
+            field_opened_by=_get(_get(raw, "zentao", {}), "field_opened_by", "openedBy"),
+            field_resolved_by=_get(_get(raw, "zentao", {}), "field_resolved_by", "resolvedBy"),
+            field_product_owner=os.getenv("ZENTAO_FIELD_PRODUCT_OWNER", "") or _get(_get(raw, "zentao", {}), "field_product_owner", ""),
             test_start=_get(_get(raw, "zentao", {}), "test_start", ""),
             test_end=_get(_get(raw, "zentao", {}), "test_end", ""),
         ),

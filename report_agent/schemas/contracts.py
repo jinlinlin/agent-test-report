@@ -73,6 +73,15 @@ class Integrity:
 
 
 @dataclass
+class People:
+    """3.1 测试人员（由本版本缺陷 openedBy/resolvedBy 如实聚合；无数据则留空待补充）。"""
+    project_owner: str = ""              # 项目负责人（需禅道项目接口，未实测前留空）
+    test_lead: List[str] = field(default_factory=list)   # 测试负责人（=本版本提交人）
+    developers: List[str] = field(default_factory=list)  # 软件工程师（=本版本解决人）
+    testers: List[str] = field(default_factory=list)     # 测试人员（=本版本提交人）
+
+
+@dataclass
 class StatsResult:
     version: VersionInfo = field(default_factory=VersionInfo)
     summary: Summary = field(default_factory=Summary)
@@ -80,6 +89,7 @@ class StatsResult:
     level_status_distribution: List[LevelStatus] = field(default_factory=list)
     conclusion: Conclusion = field(default_factory=Conclusion)
     integrity: Integrity = field(default_factory=Integrity)
+    people: People = field(default_factory=People)
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)

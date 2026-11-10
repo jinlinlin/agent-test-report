@@ -84,8 +84,18 @@ def run_probe(version_name: str = "", **overrides) -> int:
         items = _extract_list(payload, ["products", "data"])
         print(f"[probe] /products 返回 {len(items)} 条（取前 5）")
         if items:
+            from .tools.zentao_client import person_name
             print("[probe] product 字段名：" + ", ".join(sorted(items[0].keys())))
             print("[probe] product 样例：" + _json.dumps(items[0], ensure_ascii=False)[:400])
+            # 高亮“疑似负责人字段”：值为对象(含 realname/account)或名字含 owner/PO/PM/RD 的键
+            cand = []
+            for k, v in items[0].items():
+                looks = isinstance(v, dict) and ("realname" in v or "account" in v)
+                named = any(t in k.lower() for t in ("owner", "po", "pm", "rd", "manager"))
+                if looks or named:
+                    cand.append(f"{k}={person_name(v) or _json.dumps(v, ensure_ascii=False)[:60]}")
+            print("[probe] 疑似负责人字段（供设置 field_product_owner）：" + ("; ".join(cand) or "无"))
+            print("[probe] → 若其中某项就是“项目负责人”，把键名填到 settings.yaml 的 zentao.field_product_owner（或 .env 的 ZENTAO_FIELD_PRODUCT_OWNER）。")
     except ZentaoError as exc:
         print(f"[probe][失败] /products：({exc.kind}) {exc}")
         return 2

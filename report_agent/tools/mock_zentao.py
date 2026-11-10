@@ -20,7 +20,7 @@ MOCK_VERSIONS: Dict[str, Dict[str, Any]] = {
 }
 
 
-def _bug(bid, module, severity, status, resolution, activated=0) -> Dict[str, Any]:
+def _bug(bid, module, severity, status, resolution, activated=0, opened_by="", resolved_by="") -> Dict[str, Any]:
     return {
         "id": bid,
         "module": module,
@@ -28,36 +28,38 @@ def _bug(bid, module, severity, status, resolution, activated=0) -> Dict[str, An
         "status": status,          # active | resolved | closed
         "resolution": resolution,  # fixed | postponed | willnotfix | notrepro | duplicate | bydesign | external | ""
         "activatedCount": activated,
+        "openedBy": opened_by,     # 提交人（测试）
+        "resolvedBy": resolved_by, # 解决人（开发/运维）
     }
 
 
-# 代表性缺陷样本（覆盖各模块/等级/状态/resolution/激活次数分支）
+# 代表性缺陷样本（覆盖各模块/等级/状态/resolution/激活次数/提交人/解决人分支）
 MOCK_BUGS: Dict[str, List[Dict[str, Any]]] = {
     "UniResearch V5.0.0": [
-        _bug(1, "/ 科研管理 / 材料生成", 3, "closed", "fixed", 1),
-        _bug(2, "/ 科研管理 / 材料生成", 3, "closed", "fixed", 0),
-        _bug(3, "/ 科研管理 / 材料生成", 2, "closed", "fixed", 2),
-        _bug(4, "/ 科研管理 / 材料生成", 4, "resolved", "postponed", 0),
-        _bug(5, "/ 科研管理 / 成果管理", 3, "closed", "fixed", 0),
-        _bug(6, "/ 科研管理 / 成果管理", 2, "closed", "fixed", 1),
-        _bug(7, "/ 科研管理 / 课题管理", 3, "resolved", "fixed", 0),
-        _bug(8, "/ 科研管理 / 课题管理", 1, "closed", "fixed", 3),
-        _bug(9, "/ 科研实验", 2, "active", "", 1),
-        _bug(10, "/ 科研实验", 3, "active", "", 0),
-        _bug(11, "/ 科研实验", 3, "resolved", "fixed", 2),
-        _bug(12, "/ 科研实验", 4, "closed", "willnotfix", 0),
-        _bug(13, "/ 研究助手", 3, "active", "", 0),
-        _bug(14, "/ 研究助手", 2, "closed", "fixed", 1),
-        _bug(15, "/ 研究助手", 3, "closed", "fixed", 0),
-        _bug(16, "/ 文献管理", 3, "closed", "fixed", 0),
-        _bug(17, "/ 文献管理", 4, "resolved", "fixed", 0),
-        _bug(18, "/ 登录注册", 2, "active", "", 0),
-        _bug(19, "/ 登录注册", 3, "closed", "fixed", 1),
-        _bug(20, "/ 知识库", 3, "closed", "fixed", 0),
-        _bug(21, "/ 知识库", 1, "closed", "fixed", 0),
-        _bug(22, "/ 任务管理", 3, "closed", "fixed", 0),
-        _bug(23, "/ 任务管理", 4, "resolved", "postponed", 0),
-        _bug(24, "/ 公共模块", 3, "closed", "duplicate", 0),
+        _bug(1, "/ 科研管理 / 材料生成", 3, "closed", "fixed", 1, "tester_a", "dev_wang"),
+        _bug(2, "/ 科研管理 / 材料生成", 3, "closed", "fixed", 0, "tester_b", "dev_wang"),
+        _bug(3, "/ 科研管理 / 材料生成", 2, "closed", "fixed", 2, "tester_a", "dev_zhao"),
+        _bug(4, "/ 科研管理 / 材料生成", 4, "resolved", "postponed", 0, "tester_c", ""),
+        _bug(5, "/ 科研管理 / 成果管理", 3, "closed", "fixed", 0, "tester_b", "dev_zhao"),
+        _bug(6, "/ 科研管理 / 成果管理", 2, "closed", "fixed", 1, "tester_a", "dev_wang"),
+        _bug(7, "/ 科研管理 / 课题管理", 3, "resolved", "fixed", 0, "tester_c", "dev_li"),
+        _bug(8, "/ 科研管理 / 课题管理", 1, "closed", "fixed", 3, "tester_a", "dev_li"),
+        _bug(9, "/ 科研实验", 2, "active", "", 1, "tester_b", ""),
+        _bug(10, "/ 科研实验", 3, "active", "", 0, "tester_c", ""),
+        _bug(11, "/ 科研实验", 3, "resolved", "fixed", 2, "tester_a", "dev_wang"),
+        _bug(12, "/ 科研实验", 4, "closed", "willnotfix", 0, "tester_b", "dev_zhao"),
+        _bug(13, "/ 研究助手", 3, "active", "", 0, "tester_c", ""),
+        _bug(14, "/ 研究助手", 2, "closed", "fixed", 1, "tester_a", "dev_li"),
+        _bug(15, "/ 研究助手", 3, "closed", "fixed", 0, "tester_b", "dev_wang"),
+        _bug(16, "/ 文献管理", 3, "closed", "fixed", 0, "tester_c", "dev_zhao"),
+        _bug(17, "/ 文献管理", 4, "resolved", "fixed", 0, "tester_a", "dev_li"),
+        _bug(18, "/ 登录注册", 2, "active", "", 0, "tester_b", ""),
+        _bug(19, "/ 登录注册", 3, "closed", "fixed", 1, "tester_c", "dev_wang"),
+        _bug(20, "/ 知识库", 3, "closed", "fixed", 0, "tester_a", "dev_zhao"),
+        _bug(21, "/ 知识库", 1, "closed", "fixed", 0, "tester_b", "dev_li"),
+        _bug(22, "/ 任务管理", 3, "closed", "fixed", 0, "tester_c", "dev_wang"),
+        _bug(23, "/ 任务管理", 4, "resolved", "postponed", 0, "tester_a", ""),
+        _bug(24, "/ 公共模块", 3, "closed", "duplicate", 0, "tester_b", "dev_zhao"),
     ]
 }
 

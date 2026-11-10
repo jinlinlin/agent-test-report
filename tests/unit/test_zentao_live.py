@@ -236,3 +236,38 @@ def test_build_matches_contains_semantics():
     assert zc.build_matches("V5.0.0", None) is True  # 无版本号不过滤
     # V5.0 不应误匹配 V5.0.0（token 完整相等判定）
     assert zc.build_matches("V5.0.0", "V5.0") is False
+
+
+def test_person_name_variants():
+    """人员字段：对象取 realname（无则 account）；字符串原样；None/空返回空串。"""
+    assert zc.person_name({"id": 4, "account": "jinlinlin", "realname": "金琳琳"}) == "金琳琳"
+    assert zc.person_name({"account": "guo"}) == "guo"          # 无 realname 退 account
+    assert zc.person_name("jinlinlin") == "jinlinlin"           # 纯字符串
+    assert zc.person_name(None) == ""
+    assert zc.person_name({}) == ""
+
+
+def test_bugs_live_normalize_realname(fake):
+    """禅道 openedBy/resolvedBy 返回用户对象时，_normalize 应抽出真实姓名而非字典 repr。"""
+    fake.product = {"id": 7, "name": "UniResearch"}
+    fake.raw_bugs = [
+        {"id": 1, "module": "/ A", "severity": 3, "status": "closed", "resolution": "fixed",
+         "activatedCount": 0, "openedBuild": "V5.0.0",
+         "openedBy": {"id": 4, "account": "jinlinlin", "realname": "金琳琳"},
+         "resolvedBy": {"id": 18, "account": "zhaojiuyi", "realname": "赵久燚"}},
+    ]
+    cfg = load_config(**BASE)
+    r = GetVersionBugsTool(cfg).run(version_name="UniResearch V5.0.0")
+    assert r.data[0]["openedBy"] == "金琳琳"
+    assert r.data[0]["resolvedBy"] == "赵久燚"
+
+
+def test_version_live_project_owner(fake):
+    """配了 field_product_owner 则从产品对象取负责人姓名；未配则留空。"""
+    fake.product = {"id": 7, "name": "UniResearch", "PO": {"account": "wang", "realname": "王五"}}
+    cfg = load_config(**{**BASE, "zentao.field_product_owner": "PO"})
+    r = GetVersionInfoTool(cfg).run(version_name="UniResearch V5.0.0")
+    assert r.data["project_owner"] == "王五"
+    # 未配字段（显式置空）时不取、留空（避免张冠李戴）
+    cfg2 = load_config(**{**BASE, "zentao.field_product_owner": ""})
+    assert GetVersionInfoTool(cfg2).run(version_name="UniResearch V5.0.0").data["project_owner"] == ""
