@@ -1,0 +1,48 @@
+# 测试报告生成 Agent V1.0 运行配置
+# 说明：V1 默认用 mock 数据源离线跑通链路，接真实禅道时把 zentao.mode 改为 live 并配置 .env
+
+llm:
+  # OpenAI 兼容端点；换国产模型时改 base_url 即可（如各类 OpenAI 兼容网关）
+  base_url: "https://api.openai.com/v1"
+  model: "gpt-4o-mini"
+  temperature: 0.0
+  max_tokens: 2048
+  # 无 OPENAI_API_KEY 时自动回退到确定性规划器（脚本化取数顺序），保证链路可离线跑通
+  use_llm_planner: true
+
+agent:
+  max_steps: 12          # 执行上限；验证 V1-005（步数超限）时调小，例如 3
+  clarify_max_times: 1   # 缺版本名时最多澄清次数（V1-007）
+
+zentao:
+  base_url: "http://192.168.2.208:81/zentao"
+  mode: "live"           # mock | live；接真实禅道改为 live
+  timeout_seconds: 10
+  api_prefix: "/api.php/v1"   # 禅道 RESTful API 前缀
+  page_size: 100              # 分页拉取每页条数
+  # 账号密码换 token（推荐放 .env 的 ZENTAO_ACCOUNT/ZENTAO_PASSWORD，不要写在这里）
+  account: ""
+  password: ""
+  # 字段映射：不同禅道版本字段名可能不同，先用 `python -m report_agent.main --probe` 打印真实字段名再核对调整
+  field_product_name: "name"
+  field_product_desc: "desc"
+  field_module: "module"          # 列表接口返回模块 ID；真实名称逐条从 /bugs/{id} 的 moduleTitle 取
+  field_severity: "severity"      # 1=P1 致命, 2=P2 严重, 3=P3 一般, 4=P4 建议
+  field_status: "status"          # active | resolved | closed
+  field_resolution: "resolution"  # fixed | postponed | willnotfix | notrepro | duplicate | bydesign | external
+  field_activated: "activatedCount"
+  field_build: "openedBuild"      # 影响版本：禅道把“版本”建模为缺陷的 openedBuild（如 V5.0.0，可逗号多版本）
+  # 测试起止时间占位（禅道 REST 无干净的产品版本日期字段，需于报告前手填；留空则软性标注缺失，不阻断结论）
+  test_start: ""
+  test_end: ""
+
+mock:
+  # F6 故障注入开关：none | not_found | timeout | error | empty_bugs
+  fault: "none"
+
+trace:
+  enabled: true
+  dir: "traces"
+
+report:
+  output_dir: "output"
