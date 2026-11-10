@@ -51,7 +51,7 @@ def run_once(user_input: str, **overrides) -> tuple[Path | None, Path | None, st
 
     # 落盘报告
     cfg.report_dir.mkdir(parents=True, exist_ok=True)
-    report_path = cfg.report_dir / f"{_safe_name(state.version_name or 'report')}.md"
+    report_path = cfg.report_dir / f"{_safe_name(state.version_name or 'report')}_测试报告.md"
     if state.report_markdown:
         report_path.write_text(state.report_markdown, encoding="utf-8")
 
