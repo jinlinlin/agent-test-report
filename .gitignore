@@ -2,6 +2,9 @@
 .env
 config/.env
 
+# 拓展/学习笔记文档：本地留存，不提交
+docs/拓展文档/
+
 # 运行产物
 output/
 traces/
