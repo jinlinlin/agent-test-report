@@ -53,10 +53,10 @@ def test_person_counts_sorted_desc():
     assert [(p.name, p.total) for p in st.people.submit_counts] == [("甲", 2), ("乙", 2), ("丙", 1)]
     assert [(p.name, p.total) for p in st.people.resolve_counts] == [("乙", 3), ("丙", 1)]  # 未解决无解决人，不计
     md = render_report(st)
-    # 4.3/4.4 去表留图：不再输出重复件数表（charts=None 时回退图占位），仅保留说明行与图表位
+    # 4.3/4.4 去表留图：不再输出重复件数表（charts=None 时回退图占位），文字说明行已删除，仅保留图表位
     assert "| 提交人 | Bug 数 |" not in md and "| 解决人 | Bug 数 |" not in md
     assert "### 4.3 每人提交 Bug 数统计" in md and "### 4.4 每人解决 Bug 数统计" in md
-    assert "件数标注于柱末" in md
+    assert "件数标注于柱末" not in md
     assert "每人提交 Bug 数柱状图" in md and "每人解决 Bug 数柱状图" in md
 
 

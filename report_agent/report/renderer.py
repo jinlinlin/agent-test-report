@@ -75,7 +75,6 @@ def render_report(stats: StatsResult, charts: Optional[Dict[str, str]] = None,
     parts.append(T.DEFECT_TOOL + "\n")
     parts.append("### 1.3 参考文档\n")
     parts.append(T.reference_doc_table(ref_links) + "\n")
-    parts.append("> 测试大纲/测试用例链接在飞书知识库对应「项目+版本」目录下自动检索填充（未命中则留人工）；其余文档仍需人工补充。\n")
 
     # 2. 测试概要
     parts.append("## 2. 测试概要\n")
@@ -84,7 +83,6 @@ def render_report(stats: StatsResult, charts: Optional[Dict[str, str]] = None,
     parts.append("> 模块清单可参照 4.1.1 缺陷分布自动列出；描述需人工或 V2 补齐。\n")
     parts.append("### 2.2 测试环境\n")
     parts.append(T.TEST_ENV_TABLE + "\n")
-    parts.append("> 地址与凭证涉敏，不自动写入报告，需人工确认补充。\n")
     parts.append("### 2.3 测试方法以及标准\n")
     parts.append("#### 2.3.1 测试方法\n")
     parts.append(T.TEST_METHOD + "\n")
@@ -95,7 +93,6 @@ def render_report(stats: StatsResult, charts: Optional[Dict[str, str]] = None,
     parts.append("## 3. 执行结果情况记录\n")
     parts.append("### 3.1 测试人员\n")
     parts.append(_tester_table(stats) + "\n")
-    parts.append("> 测试负责人/测试人员由本版本缺陷提交人(openedBy)、软件工程师由解决人(resolvedBy)如实聚合（仅当前版本，取禅道用户真实姓名 realname）；项目负责人需在产品对象上配置 field_product_owner 字段，未配置或未取到时如实标注待补充。\n")
     parts.append("### 3.2 测试时间\n")
     parts.append("| 测试阶段 | 开始时间 | 结束时间 |")
     parts.append("| --- | --- | --- |")
@@ -119,14 +116,12 @@ def render_report(stats: StatsResult, charts: Optional[Dict[str, str]] = None,
     parts.append(_chart_block(charts, "activated_bar", "Bug 激活次数分布图", "Bug 激活次数分布图") + "\n")
     parts.append("### 4.3 每人提交 Bug 数统计\n")
     if stats.people.submit_counts:
-        parts.append("> 由本版本缺陷提交人（openedBy）实算聚合，与 3.1 同源；件数标注于柱末。\n")
         parts.append(_chart_block(charts, "person_submit_bar", "每人提交 Bug 数柱状图", "每人提交 Bug 数柱状图") + "\n")
     else:
         parts.append("【待补充：每人提交 Bug 数统计，需按缺陷 openedBy 字段聚合】\n")
         parts.append(T.CHART_PLACEHOLDER.format(item="每人提交 Bug 数柱状图") + "\n")
     parts.append("### 4.4 每人解决 Bug 数统计\n")
     if stats.people.resolve_counts:
-        parts.append("> 由本版本缺陷解决人（resolvedBy）实算聚合；仅统计有解决人的缺陷，故总计可能小于缺陷总数（未解决/已关闭无解决记者不计）。件数标注于柱末。\n")
         parts.append(_chart_block(charts, "person_resolve_bar", "每人解决 Bug 数柱状图", "每人解决 Bug 数柱状图") + "\n")
     else:
         parts.append("【待补充：每人解决 Bug 数统计，需按缺陷 resolvedBy 字段聚合】\n")

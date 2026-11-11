@@ -64,6 +64,32 @@ def test_scale_noop_when_one():
     assert docx_export._scale_image_extents(data, 1.0) is data
 
 
+_TR_HEADER = ('<w:tr><w:trPr><w:tblHeader w:val="on" /></w:trPr>'
+              '<w:tc><w:tcPr /><w:p><w:r><w:rPr><w:rFonts w:hint="eastAsia" /></w:rPr><w:t>模块</w:t></w:r></w:p></w:tc>'
+              '<w:tc><w:tcPr /><w:p><w:r><w:t>描述</w:t></w:r></w:p></w:tc></w:tr>')
+_TR_DATA = ('<w:tr><w:tc><w:tcPr /><w:p><w:r><w:t>A</w:t></w:r></w:p></w:tc></w:tr>')
+
+
+def test_style_document_xml_header_only():
+    """表头行：底纹+加粗（无 rPr 的 run 补造 rPr）；数据行原样不动；重复执行幂等。"""
+    out = docx_export._style_document_xml(_TR_HEADER + _TR_DATA)
+    assert out.count('w:fill="DEEAF6"') == 2                      # 两个表头单元格上底色
+    assert '<w:rFonts w:hint="eastAsia" /><w:b /></w:rPr>' in out  # 已有 rPr：b 追加在 rFonts 后
+    assert '<w:r><w:rPr><w:b /></w:rPr><w:t>描述</w:t>' in out     # 无 rPr：补造加粗 run
+    assert _TR_DATA in out                                          # 数据行未被触碰
+    assert docx_export._style_document_xml(out) == out              # 幂等
+
+
+@pytest.mark.skipif(not pandoc_available(), reason="需要 pandoc")
+def test_md_to_docx_styles_table_header(tmp_path):
+    md = "| 模块 | 描述 |\n| --- | --- |\n| A | B |\n"
+    with zipfile.ZipFile(io.BytesIO(md_to_docx_bytes(md, tmp_path))) as z:
+        xml = z.read("word/document.xml").decode("utf-8")
+    head, _, rest = xml.partition("</w:tr>")   # 首行=表头
+    assert 'w:fill="DEEAF6"' in head and "<w:b />" in head
+    assert 'w:fill="DEEAF6"' not in rest and "<w:b />" not in rest  # 数据行无样式
+
+
 class _StubClient:
     def __init__(self, f):
         self.upload = None
