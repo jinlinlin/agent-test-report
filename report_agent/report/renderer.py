@@ -80,7 +80,7 @@ def render_report(stats: StatsResult, charts: Optional[Dict[str, str]] = None) -
     parts.append("## 2. 测试概要\n")
     parts.append("### 2.1 测试范围\n")
     parts.append(T.TEST_SCOPE_TABLE + "\n")
-    parts.append("> 模块清单可参照 4.1.1 缺陷分布自动列出；端/描述需人工或 V2 补齐。\n")
+    parts.append("> 模块清单可参照 4.1.1 缺陷分布自动列出；描述需人工或 V2 补齐。\n")
     parts.append("### 2.2 测试环境\n")
     parts.append(T.TEST_ENV_TABLE + "\n")
     parts.append("> 地址与凭证涉敏，不自动写入报告，需人工确认补充。\n")
