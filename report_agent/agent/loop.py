@@ -101,6 +101,9 @@ class ReportAgent:
             kwargs["bugs"] = state.bugs
         elif action.tool == "render_report":
             kwargs["stats_obj"] = state.stats_obj
+            vi = state.version_info or {}
+            kwargs["product_name"] = vi.get("product_name", "")
+            kwargs["build"] = vi.get("build", "")
         elif action.tool == "push_feishu":
             kwargs["report_markdown"] = state.report_markdown
             kwargs["version_name"] = state.version_name or ""

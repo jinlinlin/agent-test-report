@@ -58,7 +58,8 @@ def _tester_table(stats: StatsResult) -> str:
     return "\n".join(rows)
 
 
-def render_report(stats: StatsResult, charts: Optional[Dict[str, str]] = None) -> str:
+def render_report(stats: StatsResult, charts: Optional[Dict[str, str]] = None,
+                  ref_links: Optional[Dict[str, str]] = None) -> str:
     s = stats.summary
     v = stats.version
     c = stats.conclusion
@@ -73,8 +74,8 @@ def render_report(stats: StatsResult, charts: Optional[Dict[str, str]] = None) -
     parts.append("### 1.2 缺陷管理工具\n")
     parts.append(T.DEFECT_TOOL + "\n")
     parts.append("### 1.3 参考文档\n")
-    parts.append(T.REFERENCE_DOC_TABLE + "\n")
-    parts.append("> 链接待 V2 接入飞书自动填充。\n")
+    parts.append(T.reference_doc_table(ref_links) + "\n")
+    parts.append("> 测试大纲/测试用例链接在飞书知识库对应「项目+版本」目录下自动检索填充（未命中则留人工）；其余文档仍需人工补充。\n")
 
     # 2. 测试概要
     parts.append("## 2. 测试概要\n")

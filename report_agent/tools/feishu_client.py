@@ -263,3 +263,47 @@ class FeishuClient:
                 break
             page = data.get("page_token", "")
         return items
+
+    def find_doc_urls(self, product_name: str, build: str, titles: List[str]) -> Dict[str, Dict[str, str]]:
+        """在“项目+版本”目录下按标题检索文档，返回 {标题: {"title": 节点真实名, "url": 知识库链接}}（未命中则该项缺失）。
+
+        严格限定作用域以防跨版本/跨项目张冠李戴：
+        产品名→同名产品子节点（模糊包含，与推送落点一致）→版本号→**精确同名**版本目录（只找不建）；
+        任一环节缺失即返回空，**绝不退而搜父层/其他版本**。仅拼 node_token 生成链接，不读文档正文。
+        """
+        f = self.f
+        out: Dict[str, Dict[str, str]] = {}
+        if not (product_name and build and f.wiki_space_id and f.wiki_projects_parent):
+            return out
+        project_node = self.find_child_by_title(f.wiki_space_id, f.wiki_projects_parent, product_name)
+        if not project_node:
+            return out
+        version_node = self.find_child_node(f.wiki_space_id, project_node, build)
+        if not version_node:  # 未找到该版本目录→不向下猜，直接空（避免拿到别的版本）
+            return out
+        nodes = self.list_nodes(f.wiki_space_id, version_node)
+        for want in titles:
+            node = self._match_child_node(nodes, want)
+            if node and node.get("node_token"):
+                out[want] = {
+                    "title": str(node.get("title") or want).strip(),
+                    "url": f"{f.doc_base_url.rstrip('/')}/wiki/{node.get('node_token', '')}",
+                }
+        return out
+
+    @staticmethod
+    def _match_child_node(nodes: List[Dict[str, Any]], title: str) -> Dict[str, Any]:
+        """在节点列表中找标题**包含**目标名的文档节点，返回该节点 dict（无则空 dict）。"""
+        def _n(s: str) -> str:
+            s = str(s or "").lower()
+            for ch in "“”\"'  \t\u3000《》":
+                s = s.replace(ch, "")
+            return s
+
+        needle = _n(title)
+        if not needle:
+            return {}
+        for node in nodes:
+            if needle in _n(node.get("title", "")):
+                return node
+        return {}

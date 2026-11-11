@@ -1,6 +1,8 @@
 """固定文案与占位符（需求文档 6.1：保留章节的固定内容 + 占位章节）。"""
 from __future__ import annotations
 
+from typing import Any, Dict, Optional
+
 PLACEHOLDER = "【待补充：{item}，V2 接入飞书】"
 CHART_PLACEHOLDER = "【图表占位：{item}（此处预留截图/图表位置，V2 或人工补充）】"
 
@@ -31,16 +33,34 @@ LEVEL_DEFINITION = """| 缺陷等级 | 缺陷性质 | 系统中对应的错误�
 | 一般（P3） | 一般缺陷 | 次要错误 / 布局不合理 / 文字错误 | 单个功能描述或实现有错误、有偏差、不一致或缺失，不影响模块正常运行或有替代办法 | 中（上线前尽量修复） |
 | 建议（P4） | 建议缺陷 | 新特性 | 不在定义、范围的约束之内，但从提出者来看是需要完善的建议 | 低（可后续版本修复） |"""
 
-# 以下为「样例有实体表格、V1 数据源暂缺」章节的表格骨架（表头 + 占位行），符合「章节保留为占位」策略。
-REFERENCE_DOC_TABLE = (
-    "| 文档（版本/日期） | 文档链接/附件 |\n"
-    "| --- | --- |\n"
-    "| 需求文档 | 【待补充】 |\n"
-    "| 软件用户手册 | 【待补充】 |\n"
-    "| UI 设计文档 | 【待补充】 |\n"
-    "| 产品原型文档 | 【待补充】 |\n"
-    "| 测试大纲 | 【待补充】 |"
-)
+# 参考文档行清单（前四行固定人工，后两行“测试大纲/测试用例”可由飞书知识库自动检索链接）。
+REFERENCE_DOC_ROWS = ("需求文档", "软件用户手册", "UI 设计文档", "产品原型文档", "测试大纲", "测试用例")
+# 可在飞书“项目+版本”目录下按标题检索并自动贴链接的文档名（同时用作检索关键词）。
+REF_DOC_LINK_TITLES = ("测试大纲", "测试用例")
+
+
+def reference_doc_table(ref_links: Optional[Dict[str, Any]] = None) -> str:
+    """§1.3 参考文档表：测试大纲/测试用例行填入自动检索到的链接（渲染为「文档名」超链接），其余及未命中行留人工占位。
+
+    ref_links 值可为 {"title": 文档名, "url": 链接}，也兼容直接给 url 字符串（此时链接文字用行名）。
+    """
+    ref_links = ref_links or {}
+    rows = ["| 文档（版本/日期） | 文档链接/附件 |", "| --- | --- |"]
+    for name in REFERENCE_DOC_ROWS:
+        if name in REF_DOC_LINK_TITLES:
+            entry = ref_links.get(name) or {}
+            if isinstance(entry, str):
+                entry = {"url": entry, "title": name}
+            url = str(entry.get("url") or "").strip()
+            if url:
+                text = str(entry.get("title") or name).strip() or name
+                cell = f"[{text}]({url})"
+            else:
+                cell = f"【待补充：未在对应版本目录找到《{name}》】"
+        else:
+            cell = "【待补充】"
+        rows.append(f"| {name} | {cell} |")
+    return "\n".join(rows)
 
 TEST_SCOPE_TABLE = (
     "| 模块 | 描述 |\n"

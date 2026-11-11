@@ -6,7 +6,9 @@
 from __future__ import annotations
 
 from ..report.renderer import render_report
+from ..report import templates as T
 from .base import Tool, ToolResult
+from .feishu_client import FeishuClient
 
 
 def _safe_name(version_name: str) -> str:
@@ -16,18 +18,34 @@ def _safe_name(version_name: str) -> str:
 
 class RenderReportTool(Tool):
     name = "render_report"
-    description = "将独立统计工具产出的结构化结果渲染为 Markdown 测试报告（含本地图表，失败降级占位）。由循环注入 stats_obj。"
-    parameters = {"stats_obj": "object(注入)"}
+    description = "将独立统计工具产出的结构化结果渲染为 Markdown 测试报告（含本地图表，失败降级占位；开启飞书时自动检索测试大纲/测试用例链接）。由循环注入 stats_obj、product_name 与 build。"
+    parameters = {"stats_obj": "object(注入)", "product_name": "string(注入)", "build": "string(注入)"}
 
     def __init__(self, cfg=None) -> None:
-        self.cfg = cfg  # 未注入 cfg 时不产图，行为与纯 Markdown 渲染一致（兼容旧调用）
+        self.cfg = cfg  # 未注入 cfg 时不产图、不检索飞书链接，行为与纯 Markdown 渲染一致（兼容旧调用）
 
-    def run(self, stats_obj=None, **kwargs) -> ToolResult:
+    def run(self, stats_obj=None, product_name: str = "", build: str = "", **kwargs) -> ToolResult:
         if stats_obj is None:
             return ToolResult(ok=False, error="缺少统计结果，无法渲染报告")
         charts = self._render_charts(stats_obj)
-        markdown = render_report(stats_obj, charts=charts)
-        return ToolResult(ok=True, data=markdown)
+        ref_links = self._resolve_ref_links(product_name, build)
+        markdown = render_report(stats_obj, charts=charts, ref_links=ref_links)
+        return ToolResult(ok=True, data=markdown, meta={"ref_doc_links": ref_links})
+
+    def _resolve_ref_links(self, product_name: str, build: str) -> dict:
+        """仅当飞书启用且配齐凭证/知识库落点时，在“项目+版本”目录下检索大纲/用例文档链接；
+        任何异常（网络/权限/未命中）一律返回空→渲染层降级为人工占位，绝不阻断报告生成。"""
+        cfg = self.cfg
+        if cfg is None:
+            return {}
+        f = cfg.feishu
+        if not (f.enabled and product_name and build and f.app_id and f.app_secret
+                and f.wiki_space_id and f.wiki_projects_parent):
+            return {}
+        try:
+            return FeishuClient(f).find_doc_urls(product_name, build, list(T.REF_DOC_LINK_TITLES))
+        except Exception:
+            return {}
 
     def _render_charts(self, stats_obj):
         """返回 {图key: 相对报告文件(output/) 的 posix 路径}；未启用/失败一律 None → 占位回退。"""
