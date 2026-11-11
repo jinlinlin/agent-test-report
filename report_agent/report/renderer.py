@@ -4,10 +4,17 @@
 """
 from __future__ import annotations
 
-from typing import Optional
+from typing import Dict, Optional
 
 from ..schemas.contracts import StatsResult
 from . import templates as T
+
+
+def _chart_block(charts: Optional[Dict[str, str]], key: str, alt: str, item: str) -> str:
+    """图表位：有对应 PNG（相对路径）则输出图片行，否则回退占位文字（不阻断）。"""
+    if charts and charts.get(key):
+        return f"![{alt}]({charts[key]})"
+    return T.CHART_PLACEHOLDER.format(item=item)
 
 
 def _module_table(stats: StatsResult) -> str:
@@ -51,7 +58,7 @@ def _tester_table(stats: StatsResult) -> str:
     return "\n".join(rows)
 
 
-def render_report(stats: StatsResult) -> str:
+def render_report(stats: StatsResult, charts: Optional[Dict[str, str]] = None) -> str:
     s = stats.summary
     v = stats.version
     c = stats.conclusion
@@ -101,24 +108,31 @@ def render_report(stats: StatsResult) -> str:
         f"待解决 {s.pending_resolve} 个，待验收 {s.pending_accept} 个，延期 {s.postponed} 个。"
         f"经核算，整体修复覆盖率为 {s.fix_coverage}。\n"
     )
-    parts.append(T.CHART_PLACEHOLDER.format(item="缺陷状态分布图（已关闭/待解决/待验收/延期）") + "\n")
+    parts.append(_chart_block(charts, "status_bar", "缺陷状态分布图", "缺陷状态分布图（已关闭/待解决/待验收/延期）") + "\n")
     parts.append("#### 4.1.1 功能缺陷分布情况\n")
     parts.append(_module_table(stats) + "\n")
-    parts.append(T.CHART_PLACEHOLDER.format(item="各模块缺陷分布图") + "\n")
     parts.append("### 4.2 Bug 激活次数统计\n")
     parts.append(
         f"本次缺陷总数 {s.total}，激活 ≥1 次的缺陷 {s.activated_ge1_count} 个，激活率 {s.activated_rate}。\n"
     )
-    parts.append(T.CHART_PLACEHOLDER.format(item="Bug 激活次数分布图") + "\n")
+    parts.append(_chart_block(charts, "activated_bar", "Bug 激活次数分布图", "Bug 激活次数分布图") + "\n")
     parts.append("### 4.3 每人提交 Bug 数统计\n")
-    parts.append("【待补充：每人提交 Bug 数统计，需按缺陷 openedBy 字段聚合，V2 实现】\n")
-    parts.append(T.CHART_PLACEHOLDER.format(item="每人提交 Bug 数柱状图") + "\n")
+    if stats.people.submit_counts:
+        parts.append("> 由本版本缺陷提交人（openedBy）实算聚合，与 3.1 同源；件数标注于柱末。\n")
+        parts.append(_chart_block(charts, "person_submit_bar", "每人提交 Bug 数柱状图", "每人提交 Bug 数柱状图") + "\n")
+    else:
+        parts.append("【待补充：每人提交 Bug 数统计，需按缺陷 openedBy 字段聚合】\n")
+        parts.append(T.CHART_PLACEHOLDER.format(item="每人提交 Bug 数柱状图") + "\n")
     parts.append("### 4.4 每人解决 Bug 数统计\n")
-    parts.append("【待补充：每人解决 Bug 数统计，需按缺陷 resolvedBy 字段聚合，V2 实现】\n")
-    parts.append(T.CHART_PLACEHOLDER.format(item="每人解决 Bug 数柱状图") + "\n")
+    if stats.people.resolve_counts:
+        parts.append("> 由本版本缺陷解决人（resolvedBy）实算聚合；仅统计有解决人的缺陷，故总计可能小于缺陷总数（未解决/已关闭无解决记者不计）。件数标注于柱末。\n")
+        parts.append(_chart_block(charts, "person_resolve_bar", "每人解决 Bug 数柱状图", "每人解决 Bug 数柱状图") + "\n")
+    else:
+        parts.append("【待补充：每人解决 Bug 数统计，需按缺陷 resolvedBy 字段聚合】\n")
+        parts.append(T.CHART_PLACEHOLDER.format(item="每人解决 Bug 数柱状图") + "\n")
     parts.append("### 4.5 缺陷等级状态分布\n")
     parts.append(_level_table(stats) + "\n")
-    parts.append(T.CHART_PLACEHOLDER.format(item="缺陷等级×状态分布图") + "\n")
+    parts.append(_chart_block(charts, "level_pie", "缺陷等级分布图", "缺陷等级分布图") + "\n")
     parts.append("### 4.6 缺陷级别定义\n")
     parts.append(T.LEVEL_DEFINITION + "\n")
 

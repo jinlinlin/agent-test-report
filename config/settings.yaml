@@ -64,3 +64,9 @@ trace:
 
 report:
   output_dir: "output"
+
+charts:
+  # matplotlib 本地生成图表（状态条形柱状图/激活次数与每人提交解决水平柱状图/等级饼图；4.1.1 模块分布仅表格不出图）到 output/assets/<版本>/，
+  # 报告内以相对路径引用；单图失败或 enabled: false 时回退【图表占位】文字，不阻断报告。
+  enabled: true
+  dpi: 150

@@ -18,6 +18,13 @@ class VersionInfo:
 
 
 @dataclass
+class ActivatedBucket:
+    """4.2 激活次数逐档：activatedCount=某次数的缺陷个数（含 0 次未激活）。"""
+    times: int
+    total: int = 0
+
+
+@dataclass
 class Summary:
     total: int = 0
     closed: int = 0
@@ -27,6 +34,7 @@ class Summary:
     fix_coverage: str = "0.00%"
     activated_ge1_count: int = 0
     activated_rate: str = "0.00%"
+    activated_dist: List[ActivatedBucket] = field(default_factory=list)  # 4.2 逐档分布（按激活次数）
 
 
 @dataclass
@@ -73,12 +81,21 @@ class Integrity:
 
 
 @dataclass
+class PersonCount:
+    """4.3/4.4 每人计数：按缺陷 openedBy/resolvedBy 实算聚合，按件数降序。"""
+    name: str
+    total: int = 0
+
+
+@dataclass
 class People:
     """3.1 测试人员（由本版本缺陷 openedBy/resolvedBy 如实聚合；无数据则留空待补充）。"""
     project_owner: str = ""              # 项目负责人（需禅道项目接口，未实测前留空）
     test_lead: List[str] = field(default_factory=list)   # 测试负责人（=本版本提交人）
     developers: List[str] = field(default_factory=list)  # 软件工程师（=本版本解决人）
     testers: List[str] = field(default_factory=list)     # 测试人员（=本版本提交人）
+    submit_counts: List[PersonCount] = field(default_factory=list)   # 4.3 每人提交数（openedBy）
+    resolve_counts: List[PersonCount] = field(default_factory=list)  # 4.4 每人解决数（resolvedBy，仅计有解决人的缺陷）
 
 
 @dataclass

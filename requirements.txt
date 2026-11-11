@@ -2,4 +2,5 @@ PyYAML>=6.0
 python-dotenv>=1.0
 requests>=2.31
 openai>=1.30
+matplotlib>=3.7
 pytest>=8.0

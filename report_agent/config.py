@@ -99,6 +99,13 @@ class ReportConfig:
 
 
 @dataclass
+class ChartsConfig:
+    """matplotlib 本地图表（Phase 1）：失败逐图降级为占位文字，不阻断报告。"""
+    enabled: bool = True
+    dpi: int = 150
+
+
+@dataclass
 class Config:
     llm: LLMConfig = field(default_factory=LLMConfig)
     agent: AgentConfig = field(default_factory=AgentConfig)
@@ -107,6 +114,7 @@ class Config:
     mock: MockConfig = field(default_factory=MockConfig)
     trace: TraceConfig = field(default_factory=TraceConfig)
     report: ReportConfig = field(default_factory=ReportConfig)
+    charts: ChartsConfig = field(default_factory=ChartsConfig)
 
     @property
     def trace_dir(self) -> Path:
@@ -188,6 +196,10 @@ def load_config(settings_path: Path | str = SETTINGS_PATH, **overrides) -> Confi
             dir=_get(_get(raw, "trace", {}), "dir", "traces"),
         ),
         report=ReportConfig(output_dir=_get(_get(raw, "report", {}), "output_dir", "output")),
+        charts=ChartsConfig(
+            enabled=_get(_get(raw, "charts", {}), "enabled", True),
+            dpi=_get(_get(raw, "charts", {}), "dpi", 150),
+        ),
     )
 
     # 应用 overrides（点路径）

@@ -29,7 +29,7 @@ def build_registry(cfg) -> ToolRegistry:
     reg.register(GetVersionInfoTool(cfg))
     reg.register(GetVersionBugsTool(cfg))
     reg.register(ComputeStatisticsTool())
-    reg.register(RenderReportTool())
+    reg.register(RenderReportTool(cfg))  # cfg 用于 charts 开关与 assets 落盘目录
     reg.register(PushFeishuTool(cfg))
     return reg
 

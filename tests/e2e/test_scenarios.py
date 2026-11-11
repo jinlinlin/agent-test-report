@@ -9,7 +9,7 @@ from report_agent.llm.client import LLMClient
 from report_agent.main import build_registry
 from report_agent.trace.tracer import Tracer
 
-BASE = {"llm.use_llm_planner": False, "zentao.mode": "mock", "trace.enabled": False}
+BASE = {"llm.use_llm_planner": False, "zentao.mode": "mock", "trace.enabled": False, "charts.enabled": False}
 
 
 def _run(user_input, **overrides):

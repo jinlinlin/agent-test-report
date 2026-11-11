@@ -11,11 +11,13 @@ from typing import Any, Dict, List, Optional
 
 from ..rules.release_engine import evaluate
 from ..schemas.contracts import (
+    ActivatedBucket,
     Conclusion,
     Integrity,
     LevelStatus,
     ModuleDist,
     People,
+    PersonCount,
     StatsResult,
     Summary,
     VersionInfo,
@@ -119,24 +121,41 @@ def opened_date_range(bugs: List[Dict[str, Any]], target_build: str = "") -> tup
     return lo.astimezone(_CN_TZ).strftime("%Y-%m-%d"), hi.astimezone(_CN_TZ).strftime("%Y-%m-%d")
 
 
-def collect_people(bugs: List[Dict[str, Any]], target_build: str = "") -> Dict[str, List[str]]:
+def collect_people(bugs: List[Dict[str, Any]], target_build: str = "") -> Dict[str, List]:
     """从「影响版本恰好等于本版本」的缺陷聚合人员（仅当前版本，排除跨版本带入）。
 
-    返回：reporters=提交人去重（openedBy）、developers=解决人去重（resolvedBy）；保留首次出现顺序。
+    返回：reporters=提交人去重（openedBy）、developers=解决人去重（resolvedBy），保留首次出现顺序；
+    submit_counts/resolve_counts=4.3/4.4 每人件数（PersonCount 列表，按件数降序、同数按首次出现）。
     无任何数据则返回空列表（上层如实标注待补充，不编造）。
     """
     reporters: List[str] = []
     developers: List[str] = []
+    submit_n: Dict[str, int] = {}
+    resolve_n: Dict[str, int] = {}
     for b in bugs:
         if not _build_exact(b.get("openedBuild", ""), target_build):
             continue
         ob = str(b.get("openedBy") or "").strip()
         rb = str(b.get("resolvedBy") or "").strip()
-        if ob and ob not in reporters:
-            reporters.append(ob)
-        if rb and rb not in developers:
-            developers.append(rb)
-    return {"reporters": reporters, "developers": developers}
+        if ob:
+            if ob not in reporters:
+                reporters.append(ob)
+            submit_n[ob] = submit_n.get(ob, 0) + 1
+        if rb:
+            if rb not in developers:
+                developers.append(rb)
+            resolve_n[rb] = resolve_n.get(rb, 0) + 1
+
+    def _sorted_counts(counter: Dict[str, int]) -> List[PersonCount]:
+        # 先按首次出现入列（dict 保序），再稳定排序降序 → 同数保持首次顺序
+        return [PersonCount(name=n, total=c) for n, c in sorted(counter.items(), key=lambda kv: -kv[1])]
+
+    return {
+        "reporters": reporters,
+        "developers": developers,
+        "submit_counts": _sorted_counts(submit_n),
+        "resolve_counts": _sorted_counts(resolve_n),
+    }
 
 
 def compute_statistics(version_info: Dict[str, Any] | None, bugs: List[Dict[str, Any]] | None) -> StatsResult:
@@ -160,6 +179,7 @@ def compute_statistics(version_info: Dict[str, Any] | None, bugs: List[Dict[str,
     total = len(bugs)
     bucket_total = {b: 0 for b in BUCKETS}
     activated_ge1 = 0
+    activated_counter: Dict[int, int] = {}  # 4.2 激活次数→缺陷个数的逐档计数
 
     module_map: Dict[str, ModuleDist] = {}
     level_map: Dict[str, LevelStatus] = {lv: LevelStatus(level=lv) for lv in LEVELS}
@@ -169,10 +189,14 @@ def compute_statistics(version_info: Dict[str, Any] | None, bugs: List[Dict[str,
         bucket_total[bucket] += 1
 
         try:
-            if int(bug.get("activatedCount", 0)) >= 1:
-                activated_ge1 += 1
+            ac = int(bug.get("activatedCount", 0) or 0)
         except (TypeError, ValueError):
-            pass
+            ac = 0
+        if ac < 0:
+            ac = 0
+        activated_counter[ac] = activated_counter.get(ac, 0) + 1
+        if ac >= 1:
+            activated_ge1 += 1
 
         mod = bug.get("module") or "未分类"
         if mod not in module_map:
@@ -193,6 +217,13 @@ def compute_statistics(version_info: Dict[str, Any] | None, bugs: List[Dict[str,
         elif bucket == "postponed":
             ls.postponed += 1
 
+    # 4.2 逐档分布：从 0 到最大激活次数连续成档（中间无缺陷的次数计 0），保证坐标轴连续。
+    max_ac = max(activated_counter) if activated_counter else 0
+    activated_dist = [
+        ActivatedBucket(times=t, total=activated_counter.get(t, 0))
+        for t in range(0, max_ac + 1)
+    ]
+
     summary = Summary(
         total=total,
         closed=bucket_total["closed"],
@@ -202,6 +233,7 @@ def compute_statistics(version_info: Dict[str, Any] | None, bugs: List[Dict[str,
         fix_coverage=_pct(bucket_total["closed"], total),
         activated_ge1_count=activated_ge1,
         activated_rate=_pct(activated_ge1, total),
+        activated_dist=activated_dist,
     )
 
     module_distribution = sorted(module_map.values(), key=lambda m: m.total, reverse=True)
@@ -216,6 +248,8 @@ def compute_statistics(version_info: Dict[str, Any] | None, bugs: List[Dict[str,
         test_lead=list(people_raw["reporters"]),
         testers=list(people_raw["reporters"]),
         developers=list(people_raw["developers"]),
+        submit_counts=list(people_raw["submit_counts"]),
+        resolve_counts=list(people_raw["resolve_counts"]),
     )
 
     missing: List[str] = []
