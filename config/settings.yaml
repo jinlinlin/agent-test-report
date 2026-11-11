@@ -39,6 +39,12 @@ zentao:
   field_opened_by: "openedBy"     # 缺陷提交人（账号）：测试负责人/测试人员由本版本缺陷 openedBy 去重聚合
   field_resolved_by: "resolvedBy" # 缺陷解决人（账号）：软件工程师（开发/运维）由本版本缺陷 resolvedBy 去重聚合
   field_product_owner: "PO"       # 项目负责人：产品列表“负责人”列对应产品对象的 PO 字段（如 UniResearch→黄运）；若 --probe 显示 PO 是账号而非姓名，需再引 /users 映射
+  # 缺陷清单（第 6 节）展示字段（仅用于明细表呈现，不影响统计口径；列表接口缺的字段从单条详情补拉）
+  field_title: "title"            # bug 标题
+  field_priority: "pri"           # 优先级（禅道键名为 pri，非 priority）
+  field_type: "type"              # 功能类型（缺陷类型）
+  field_steps: "steps"            # 重现步骤（禅道为 HTML，渲染去标签+截断）
+  field_assigned_to: "assignedTo" # 指派给
   # 测试起止时间：默认由缺陷创建时间实算（见上）；下方仅当缺陷无可用日期时作兜底或手工覆盖
   test_start: ""
   test_end: ""
@@ -59,6 +65,11 @@ feishu:
   # 仅放大图片在飞书文档中的显示尺寸（等比倍率，只改图，不改页面/正文）：1.0=不放大；
   # 上限受飞书正文列宽约束（现约 5.83in），1.6 约可接近翻倍但仍可能被飞书自适应截断。
   chart_display_scale: 1.4
+  # 第 6 节缺陷清单：true=开启飞书时将延期/激活两类缺陷以多维表格呈现（重现步骤全文不截断）；未启用/无缺陷则自动回退为正文宽表。
+  defect_bitable: true
+  # 多维表格形态：true=以“文档内嵌块”直接展开在报告正文（C，需 docx:document + base:field/record/table 增删改并发布）；
+  # false=降级为正文内嵌宽表（不再创建独立多维表格知识库节点）。内嵌失败时自动降级为仅计数说明，不阻断报告。
+  defect_bitable_embed: true
 
 mock:
   # F6 故障注入开关：none | not_found | timeout | error | empty_bugs

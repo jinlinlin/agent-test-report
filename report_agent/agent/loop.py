@@ -110,6 +110,7 @@ class ReportAgent:
             vi = state.version_info or {}
             kwargs["product_name"] = vi.get("product_name", "")
             kwargs["build"] = vi.get("build", "")
+            kwargs["stats_obj"] = state.stats_obj
 
         try:
             return tool.run(**kwargs)

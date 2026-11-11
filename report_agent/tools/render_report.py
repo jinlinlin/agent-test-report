@@ -29,8 +29,25 @@ class RenderReportTool(Tool):
             return ToolResult(ok=False, error="缺少统计结果，无法渲染报告")
         charts = self._render_charts(stats_obj)
         ref_links = self._resolve_ref_links(product_name, build)
-        markdown = render_report(stats_obj, charts=charts, ref_links=ref_links)
-        return ToolResult(ok=True, data=markdown, meta={"ref_doc_links": ref_links})
+        embed = self._defect_embed_mode(stats_obj)
+        markdown = render_report(stats_obj, charts=charts, ref_links=ref_links,
+                                 defect_bitable_inline=embed)
+        return ToolResult(ok=True, data=markdown,
+                          meta={"ref_doc_links": ref_links, "defect_bitable_embed": embed})
+
+    def _defect_embed_mode(self, stats_obj) -> bool:
+        """第 6 节是否走 C（文档内嵌多维表格）：飞书启用 + 开 defect_bitable + 开 defect_bitable_embed + 有缺陷行。
+        命中时正文只写计数引导，实体表交由 push_feishu 导入后内嵌；未命中（开关关/无飞书/无缺陷）则回退正文内嵌宽表。
+        两种形态都不再创建独立多维表格知识库节点（B 已废弃）。"""
+        cfg = self.cfg
+        if cfg is None:
+            return False
+        f = cfg.feishu
+        if not (f.enabled and getattr(f, "defect_bitable", False) and getattr(f, "defect_bitable_embed", False)):
+            return False
+        active = getattr(stats_obj, "active_bugs", None) or []
+        postponed = getattr(stats_obj, "postponed_bugs", None) or []
+        return bool(active or postponed)
 
     def _resolve_ref_links(self, product_name: str, build: str) -> dict:
         """仅当飞书启用且配齐凭证/知识库落点时，在“项目+版本”目录下检索大纲/用例文档链接；

@@ -20,7 +20,9 @@ MOCK_VERSIONS: Dict[str, Dict[str, Any]] = {
 }
 
 
-def _bug(bid, module, severity, status, resolution, activated=0, opened_by="", resolved_by="") -> Dict[str, Any]:
+def _bug(bid, module, severity, status, resolution, activated=0, opened_by="", resolved_by="",
+         title=None, priority=None, btype=None, steps=None, assigned_to=None) -> Dict[str, Any]:
+    mod = module.strip("/ ") or "功能"
     return {
         "id": bid,
         "module": module,
@@ -30,6 +32,12 @@ def _bug(bid, module, severity, status, resolution, activated=0, opened_by="", r
         "activatedCount": activated,
         "openedBy": opened_by,     # 提交人（测试）
         "resolvedBy": resolved_by, # 解决人（开发/运维）
+        # 第 6 节缺陷清单展示字段（未显式传入则按模块/编号派生示例值，供离线预览）
+        "title": title or f"【{mod}】示例缺陷用例 {bid}",
+        "priority": priority if priority is not None else severity,
+        "type": btype or "codeerror",
+        "steps": steps or f"1. 进入{mod}；2. 执行相关操作；3. 观察到异常（示例重现步骤）。",
+        "assignedTo": assigned_to or (resolved_by or "dev_wang"),
     }
 
 

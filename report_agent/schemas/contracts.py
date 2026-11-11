@@ -88,6 +88,23 @@ class PersonCount:
 
 
 @dataclass
+class BugRow:
+    """第 6 节缺陷清单行（存原始值；中文映射、HTML 去标签与截断由渲染层完成）。"""
+    id: Any = None
+    module: str = ""
+    title: str = ""
+    priority: Any = None
+    type: str = ""
+    steps: str = ""
+    status: str = ""
+    opened_by: str = ""
+    opened_date: str = ""
+    opened_build: str = ""
+    assigned_to: str = ""
+    resolution: str = ""
+
+
+@dataclass
 class People:
     """3.1 测试人员（由本版本缺陷 openedBy/resolvedBy 如实聚合；无数据则留空待补充）。"""
     project_owner: str = ""              # 项目负责人（需禅道项目接口，未实测前留空）
@@ -107,6 +124,8 @@ class StatsResult:
     conclusion: Conclusion = field(default_factory=Conclusion)
     integrity: Integrity = field(default_factory=Integrity)
     people: People = field(default_factory=People)
+    active_bugs: List[BugRow] = field(default_factory=list)     # 6.2 激活清单（status=active）
+    postponed_bugs: List[BugRow] = field(default_factory=list)  # 6.1 延期清单（resolution=postponed 且 status≠closed）
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)

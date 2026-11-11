@@ -150,6 +150,28 @@ python -m report_agent.main "帮我生成 一表通项目 理工1.0.0 的测试�
 
 禅道 REST 把 `openedBy/resolvedBy`（及产品负责人字段）返回为**用户对象**（含 `realname`/`account`/`id`），系统统一取 `realname` 作为显示名（无则退 `account`）。字段名可配置（`settings.yaml` 的 `zentao.field_opened_by` / `field_resolved_by` / `field_product_owner`）。跑 `python -m report_agent.main --probe` 会打印产品对象及其**疑似负责人字段**（值为用户对象或键名含 owner/PO/PM/RD 的项），据此把正确键名填进 `field_product_owner`（或 `.env` 的 `ZENTAO_FIELD_PRODUCT_OWNER`）。取不到任何人员时对应格标【待补充】。
 
+### 一·d、缺陷清单（第 6 节）内嵌为飞书多维表格
+
+报告末尾第 6 节把两类重点缺陷**直接内嵌展开在正文**（飞书文档内的多维表格块，形如原生报告里那张可筛选/排序的表；宽表在竖版 docx 里会被挤成一竖条、长文本无法完整显示，故改为多维表格）。默认形态为**文档内嵌块（C）**；由 `feishu.defect_bitable_embed` 控制：`true`=内嵌展开（默认），`false`=回退为正文内嵌宽表（**不再创建任何独立多维表格节点**）：
+
+- **当前版本遗留未解决bug**（第一张表）：`status=active`（激活待解决）；
+- **当前版本延期处理bug**（第二张表）：`resolution=postponed 且 status≠closed`（延期处理且未关闭）。
+
+两表都取自与缺陷总数/状态分布同一批 scoped 缺陷（包含即计入），条数与 summary「待解决/延期」对齐。多维表格建在**报告同一个知识库版本目录**下（每版本一个快照），13 个字段：序号、Bug编号、所属模块、bug标题、优先级、功能类型、重现步骤、bug状态、由谁创建、创建日期、影响版本、指派给、解决方案。其中 `功能类型/bug状态/解决方案` 为**单选**字段（可点选筛选），**`重现步骤` 为多行文本、全文不截断**（这正是解决“文字多又不能裁”的关键）。
+
+实现要点：
+
+- **内嵌形态（C，默认）**：正文（`render_report`）只写计数与引导（不放链接、不放宽表）；真正的多维表格在 **`push_feishu` 导入并入库之后**逐组插入——**每组各插一个内嵌块**（先插一个三级标题块 `block_type=5` 作为表标题，再插一个多维表格块 `block_type=18`），拆出其 `app_token/table_id`，清理该默认表自带的 3 个垃圾列与 3 条空行（主列改名为「序号」、多余列删除、空行批量删除），补齐其余 12 列并灌记录。因单个内嵌块只渲染其绑定的那张表，故遗留未解决、延期处理各自独占一块（而非单块内多表，否则第二张表不显示）。顺序：①「6.1 当前版本遗留未解决bug」（激活）②「6.2 当前版本延期处理bug」（延期）。**全程非致命**——内嵌失败（网络/权限/未发布）时正文保留计数引导不阻断报告。
+- **宽表回退（`defect_bitable_embed=false` 或无飞书/无缺陷）**：第 6 节直接放宽 Markdown 表（6.1/6.2）。**曾经的独立多维表格节点 + 正文链接形态（B）已从链路彻底移除**（`_export_defect_bitable`/`build_defect_bitable`/`create_bitable_node`/`resolve_report_parent` 均已删除），任何配置都不会再在知识库创建「缺陷清单」独立节点。
+
+开关：`settings.yaml` 的 `feishu.defect_bitable`（默认 true，仅 `feishu.enabled` 时生效）与 `feishu.defect_bitable_embed`（默认 true=C 内嵌；false=正文宽表回退）。
+
+> **live 前置**：内嵌形态（C）需 **`docx:document`**（向文档插入多维表格块）与 **`bitable:app`**（伞项，覆盖建/改/删字段、建/删/写记录；因需清理默认列与空行，细粒度 `base:field:create` 不够）。均须**发布版本**才生效。因多维表格由应用自己创建，应用即其所有者，不会再遇到“高级权限/添加文档应用”那道坎。飞书无“重命名数据表”的独立建表接口，默认表名用 `PATCH .../tables/{tbl}` 改。
+>
+> 飞书 `block_type=18` 内嵌多维表格块**只能建空表**（`view_type` 指定），不能引用已有多维表格；所以 C 是“先插空块、再用多维表格 API 灌数据”，而非把 B 的独立表内联。
+
+> **live 实测（UniResearch V5.1.0、C 内嵌）**：推送后文档末尾含 2 个内嵌块（各带一个三级标题块），块1=「6.1 当前版本遗留未解决bug」15 条、块2=「6.2 当前版本延期处理bug」3 条，均恰好 13 列、主列已改名「序号」、默认垃圾列/空行已清零。优先级在禅道键名为 **`pri`**（非 `priority`，已作为默认）；由谁创建/指派给取 realname、影响版本为 `openedBuild` 原值。字段名可配置（`settings.yaml` 的 `field_title`/`field_priority`/`field_type`/`field_steps`/`field_assigned_to`）；列表接口不返回的字段从单条详情 `get_bug` 补拉。
+
 ### 二、接真实 LLM 规划
 
 1. 在 `config/.env` 填 `OPENAI_API_KEY`（OpenAI 兼容端点在 `settings.yaml` 的 `llm.base_url` 配置）。

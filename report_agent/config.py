@@ -57,6 +57,12 @@ class ZentaoConfig:
     field_opened_by: str = "openedBy"      # 缺陷提交人（测试人员/测试负责人来源）
     field_resolved_by: str = "resolvedBy"  # 缺陷解决人（软件工程师来源）
     field_product_owner: str = ""          # 项目负责人在产品对象上的字段名（留空则不取、标待补充；用 --probe 核对后填 PO/PM 等）
+    # 缺陷清单（第 6 节）展示字段（仅用于明细表呈现，不影响统计口径；字段名走配置应对禅道版本差异）
+    field_title: str = "title"             # bug 标题
+    field_priority: str = "pri"            # 优先级（禅道键名为 pri，非 priority）
+    field_type: str = "type"               # 功能类型（缺陷类型）
+    field_steps: str = "steps"             # 重现步骤（禅道为 HTML，渲染时净化）
+    field_assigned_to: str = "assignedTo"  # 指派给
     # 测试起止时间：默认由本版本缺陷创建时间实算；此处仅在无可用日期时作兜底/手工覆盖（§10）
     test_start: str = ""
     test_end: str = ""
@@ -82,6 +88,8 @@ class FeishuConfig:
     import_poll_seconds: int = 30
     import_as_docx: bool = True                # 先用本地 pandoc 把 md 转成内嵌图表的 docx 再导入（失败自动回退 md）
     chart_display_scale: float = 1.0           # 仅放大图片在飞书文档中的显示尺寸（等比倍率，1.0=不变；不改页面/正文）
+    defect_bitable: bool = True                # 开启飞书时，第 6 节缺陷清单以多维表格呈现（未启用/无缺陷则回退正文宽表）
+    defect_bitable_embed: bool = True              # 多维表格以“文档内嵌块”展开在正文（C）；false 则回退为正文内嵌宽表（不再建独立知识库节点）
 
 
 @dataclass
@@ -176,6 +184,11 @@ def load_config(settings_path: Path | str = SETTINGS_PATH, **overrides) -> Confi
             field_opened_by=_get(_get(raw, "zentao", {}), "field_opened_by", "openedBy"),
             field_resolved_by=_get(_get(raw, "zentao", {}), "field_resolved_by", "resolvedBy"),
             field_product_owner=os.getenv("ZENTAO_FIELD_PRODUCT_OWNER", "") or _get(_get(raw, "zentao", {}), "field_product_owner", ""),
+            field_title=_get(_get(raw, "zentao", {}), "field_title", "title"),
+            field_priority=_get(_get(raw, "zentao", {}), "field_priority", "pri"),
+            field_type=_get(_get(raw, "zentao", {}), "field_type", "type"),
+            field_steps=_get(_get(raw, "zentao", {}), "field_steps", "steps"),
+            field_assigned_to=_get(_get(raw, "zentao", {}), "field_assigned_to", "assignedTo"),
             test_start=_get(_get(raw, "zentao", {}), "test_start", ""),
             test_end=_get(_get(raw, "zentao", {}), "test_end", ""),
         ),
@@ -193,6 +206,8 @@ def load_config(settings_path: Path | str = SETTINGS_PATH, **overrides) -> Confi
             import_poll_seconds=_get(_get(raw, "feishu", {}), "import_poll_seconds", 30),
             import_as_docx=str(_get(_get(raw, "feishu", {}), "import_as_docx", True)).lower() in ("1", "true", "yes", "on"),
             chart_display_scale=float(_get(_get(raw, "feishu", {}), "chart_display_scale", 1.0)),
+            defect_bitable=str(_get(_get(raw, "feishu", {}), "defect_bitable", True)).lower() in ("1", "true", "yes", "on"),
+            defect_bitable_embed=str(_get(_get(raw, "feishu", {}), "defect_bitable_embed", True)).lower() in ("1", "true", "yes", "on"),
         ),
         mock=MockConfig(fault=_get(_get(raw, "mock", {}), "fault", "none")),
         trace=TraceConfig(

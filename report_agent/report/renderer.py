@@ -4,9 +4,12 @@
 """
 from __future__ import annotations
 
-from typing import Dict, Optional
+import html
+import re
+from datetime import datetime, timedelta, timezone
+from typing import Dict, List, Optional
 
-from ..schemas.contracts import StatsResult
+from ..schemas.contracts import BugRow, StatsResult
 from . import templates as T
 
 
@@ -58,8 +61,148 @@ def _tester_table(stats: StatsResult) -> str:
     return "\n".join(rows)
 
 
+# ---- 第 6 节缺陷清单：禅道枚举值→中文、单元格净化、日期格式化 ----
+_TAG_RE = re.compile(r"<[^>]+>")
+_NULLISH = {"", "null", "none", "0000-00-00 00:00:00", "0000-00-00"}
+_CN_TZ = timezone(timedelta(hours=8))
+
+_STATUS_CN = {"active": "激活", "resolved": "已解决", "closed": "已关闭"}
+_RESOLUTION_CN = {
+    "fixed": "已解决", "willnotfix": "不予解决", "bydesign": "设计如此",
+    "duplicate": "重复Bug", "notrepro": "无法重现", "external": "外部原因",
+    "postponed": "延期处理",
+}
+_TYPE_CN = {
+    "codeerror": "代码错误", "config": "配置相关", "install": "安装部署",
+    "security": "安全相关", "performance": "性能问题", "standard": "规范文档",
+    "designdefect": "设计缺陷", "reliability": "可靠性问题", "other": "其他",
+}
+
+
+def _clean_cell(value, limit: int = 0) -> str:
+    """去 HTML 标签、反转义、折叠空白、竖线转全角（防破表），可选截断；空值返回 '-'。"""
+    s = str(value if value is not None else "")
+    s = _TAG_RE.sub(" ", s)
+    s = html.unescape(s)
+    s = re.sub(r"\s+", " ", s.replace("|", "｜")).strip()
+    if limit and len(s) > limit:
+        s = s[:limit] + "…"
+    return s or "-"
+
+
+def _map_cn(value: str, table: Dict[str, str]) -> str:
+    key = str(value or "").strip().lower()
+    return table.get(key, _clean_cell(value))
+
+
+def _fmt_date(value) -> str:
+    s = str(value or "").strip()
+    if s.lower() in _NULLISH:
+        return "-"
+    iso = s[:-1] + "+00:00" if s.endswith("Z") else s
+    dt = None
+    try:
+        dt = datetime.fromisoformat(iso)
+    except ValueError:
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+            try:
+                dt = datetime.strptime(s, fmt)
+                break
+            except ValueError:
+                continue
+    if dt is None:
+        return s[:10] if len(s) >= 10 else "-"
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=_CN_TZ)
+    return dt.astimezone(_CN_TZ).strftime("%Y-%m-%d")
+
+
+_DEFECT_HEADERS = ["ID", "Bug编号", "所属模块", "bug标题", "优先级", "功能类型", "重现步骤",
+                   "bug状态", "由谁创建", "创建日期", "影响版本", "指派给", "解决方案"]
+
+
+def _defect_table(rows: List[BugRow], empty_msg: str) -> str:
+    """输出 12 列缺陷清单；无数据则返回提示语（不删列、不编造）。"""
+    if not rows:
+        return empty_msg
+    lines = ["| " + " | ".join(_DEFECT_HEADERS) + " |",
+             "| " + " | ".join(["---"] * len(_DEFECT_HEADERS)) + " |"]
+    for i, r in enumerate(rows, 1):
+        cells = [
+            str(i),
+            _clean_cell(r.id),
+            _clean_cell(r.module),
+            _clean_cell(r.title, 60),
+            _clean_cell(r.priority),
+            _map_cn(r.type, _TYPE_CN),
+            _clean_cell(r.steps, 120),
+            _map_cn(r.status, _STATUS_CN),
+            _clean_cell(r.opened_by),
+            _fmt_date(r.opened_date),
+            _clean_cell(r.opened_build),
+            _clean_cell(r.assigned_to),
+            _map_cn(r.resolution, _RESOLUTION_CN),
+        ]
+        lines.append("| " + " | ".join(cells) + " |")
+    return "\n".join(lines)
+
+
+# ---- 多维表格（第 6 节导出）：字段规格与记录映射（重现步骤全文不截断）----
+DEFECT_FIELD_SPECS: List[Dict[str, Any]] = [
+    {"field_name": "序号", "type": 1},
+    {"field_name": "Bug编号", "type": 1},
+    {"field_name": "所属模块", "type": 1},
+    {"field_name": "bug标题", "type": 1},
+    {"field_name": "优先级", "type": 1},
+    {"field_name": "功能类型", "type": 3},
+    {"field_name": "重现步骤", "type": 1},
+    {"field_name": "bug状态", "type": 3},
+    {"field_name": "由谁创建", "type": 1},
+    {"field_name": "创建日期", "type": 1},
+    {"field_name": "影响版本", "type": 1},
+    {"field_name": "指派给", "type": 1},
+    {"field_name": "解决方案", "type": 3},
+]
+
+
+def _bit_text(value) -> str:
+    """多维表格文本单元格：去 HTML 标签、反转义、折叠空白；空→空串（bitable 非 markdown，不转义竖线）。"""
+    s = _TAG_RE.sub(" ", str(value if value is not None else ""))
+    s = html.unescape(s)
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def _bit_select(value, table: Dict[str, str]):
+    """单选字段：空值返回 None（不建空选项）；枚举命中取中文，否则取净化后的原值。"""
+    key = str(value or "").strip().lower()
+    if not key:
+        return None
+    return table.get(key) or (_bit_text(value) or None)
+
+
+def bug_to_fields(row: BugRow, seq: int) -> Dict[str, Any]:
+    """一条缺陷→多维表格记录（列名→值）：枚举中文化、重现步骤全文不截断、空单选留 None。"""
+    d = _fmt_date(row.opened_date)
+    return {
+        "序号": str(seq),
+        "Bug编号": _bit_text(row.id),
+        "所属模块": _bit_text(row.module),
+        "bug标题": _bit_text(row.title),
+        "优先级": _bit_text(row.priority),
+        "功能类型": _bit_select(row.type, _TYPE_CN),
+        "重现步骤": _bit_text(row.steps),
+        "bug状态": _bit_select(row.status, _STATUS_CN),
+        "由谁创建": _bit_text(row.opened_by),
+        "创建日期": "" if d == "-" else d,
+        "影响版本": _bit_text(row.opened_build),
+        "指派给": _bit_text(row.assigned_to),
+        "解决方案": _bit_select(row.resolution, _RESOLUTION_CN),
+    }
+
+
 def render_report(stats: StatsResult, charts: Optional[Dict[str, str]] = None,
-                  ref_links: Optional[Dict[str, str]] = None) -> str:
+                  ref_links: Optional[Dict[str, str]] = None,
+                  defect_bitable_inline: bool = False) -> str:
     s = stats.summary
     v = stats.version
     c = stats.conclusion
@@ -146,7 +289,15 @@ def render_report(stats: StatsResult, charts: Optional[Dict[str, str]] = None,
 
     # 6. 缺陷清单
     parts.append("## 6. 缺陷清单\n")
-    parts.append(T.DEFECT_LIST_NOTE + "\n")
+    if defect_bitable_inline:
+        # C：正文只写计数与引导，多维表格实体由推送环节内嵌到本文档末尾（失败则降级为仅本段说明）。
+        parts.append(T.defect_bitable_inline_note(len(stats.postponed_bugs), len(stats.active_bugs)) + "\n")
+    else:
+        parts.append(T.DEFECT_LIST_NOTE + "\n")
+        parts.append("### 6.1 延期处理缺陷清单\n")
+        parts.append(_defect_table(stats.postponed_bugs, "本版本无「延期处理且未关闭」的缺陷。") + "\n")
+        parts.append("### 6.2 激活（待解决）缺陷清单\n")
+        parts.append(_defect_table(stats.active_bugs, "本版本无激活（待解决）的缺陷。") + "\n")
 
     return "\n".join(parts)
 

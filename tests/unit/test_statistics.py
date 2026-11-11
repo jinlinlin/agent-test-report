@@ -5,6 +5,7 @@ from report_agent.tools.statistics import (
     status_bucket,
     level_of,
     opened_date_range,
+    collect_defect_lists,
 )
 
 
@@ -165,3 +166,44 @@ def test_render_31_marks_placeholder_when_no_project_owner():
     assert "| 测试负责人 | tester_a |" in md
     assert "| 软件工程师（开发、运维） | dev_wang |" in md
     assert "项目负责人 | 【待补充" in md
+
+
+def test_collect_defect_lists_predicates():
+    """激活=status active；延期=postponed且未关闭；closed+postponed 不算延期；resolved+fixed 两表都不进。"""
+    bugs = [
+        {"id": 1, "status": "active", "resolution": ""},
+        {"id": 2, "status": "resolved", "resolution": "postponed"},
+        {"id": 3, "status": "closed", "resolution": "postponed"},   # 已关闭，不进延期表
+        {"id": 4, "status": "resolved", "resolution": "fixed"},      # 两表都不进
+    ]
+    active, postponed = collect_defect_lists(bugs)
+    assert [r.id for r in active] == [1]
+    assert [r.id for r in postponed] == [2]
+
+
+def test_defect_lists_counts_match_summary():
+    """清单条数与 summary 的待解决/延期计数对齐（同口径）。"""
+    bugs = [
+        {"module": "/A", "severity": 3, "status": "active", "resolution": "", "activatedCount": 0},
+        {"module": "/A", "severity": 3, "status": "active", "resolution": "", "activatedCount": 1},
+        {"module": "/B", "severity": 2, "status": "resolved", "resolution": "postponed", "activatedCount": 0},
+        {"module": "/C", "severity": 3, "status": "closed", "resolution": "fixed", "activatedCount": 0},
+    ]
+    r = compute_statistics({"name": "V", "fetch_status": "ok"}, bugs)
+    assert len(r.active_bugs) == r.summary.pending_resolve == 2
+    assert len(r.postponed_bugs) == r.summary.postponed == 1
+
+
+def test_defect_table_sanitizes_and_maps():
+    """渲染：去 HTML 标签、竖线转义、枚举中文化；空清单返回提示语。"""
+    from report_agent.report.renderer import _defect_table, _clean_cell
+    from report_agent.schemas.contracts import BugRow
+    assert _clean_cell("<p>a | b</p>") == "a ｜ b"
+    row = BugRow(id=9, module="/M", title="T", priority=2, type="codeerror",
+                 steps="<div>步骤1</div>", status="active", opened_by="张三",
+                 opened_date="2026-11-09T02:01:28Z", opened_build="V5.1.0",
+                 assigned_to="李四", resolution="postponed")
+    md = _defect_table([row], "无")
+    assert "Bug编号" in md and "解决方案" in md
+    assert "| 1 | 9 | /M | T | 2 | 代码错误 | 步骤1 | 激活 | 张三 | 2026-11-09 | V5.1.0 | 李四 | 延期处理 |" in md
+    assert _defect_table([], "本版本无激活缺陷。") == "本版本无激活缺陷。"

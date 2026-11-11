@@ -70,6 +70,13 @@ class GetVersionBugsTool(Tool):
             module = detail.get("moduleTitle")
         if not module:
             module = raw.get("moduleTitle") or raw.get(z.field_module) or "未分类"
+
+        def _pick(key):
+            # 列表接口缺的展示字段（title/priority/type/steps/assignedTo）从单条详情补拉，详情无则回退列表
+            if detail and detail.get(key) not in (None, ""):
+                return detail.get(key)
+            return raw.get(key)
+
         return {
             "id": raw.get("id"),
             "module": module,
@@ -81,4 +88,10 @@ class GetVersionBugsTool(Tool):
             "openedBuild": raw.get(z.field_build) or "",
             "openedBy": zc.person_name(raw.get(z.field_opened_by)),
             "resolvedBy": zc.person_name(raw.get(z.field_resolved_by)),
+            # 第 6 节缺陷清单展示字段（原始值，中文映射/净化交由渲染层）
+            "title": _pick(z.field_title) or "",
+            "priority": _pick(z.field_priority),
+            "type": _pick(z.field_type) or "",
+            "steps": _pick(z.field_steps) or "",
+            "assignedTo": zc.person_name(_pick(z.field_assigned_to)),
         }

@@ -20,13 +20,13 @@ def _doc_name(version_name: str) -> str:
 
 class PushFeishuTool(Tool):
     name = "push_feishu"
-    description = "将渲染好的 Markdown 报告导入为飞书云文档并写入知识库节点（多项目：按产品名路由同名子节点；同项目下按版本号建子目录），返回文档链接。由循环注入 report_markdown、version_name、product_name 与 build。"
-    parameters = {"report_markdown": "string(注入)", "version_name": "string(注入)", "product_name": "string(注入)", "build": "string(注入)"}
+    description = "将渲染好的 Markdown 报告导入为飞书云文档并写入知识库节点（多项目：按产品名路由同名子节点；同项目下按版本号建子目录），返回文档链接。由循环注入 report_markdown、version_name、product_name、build 与 stats_obj（用于第 6 节内嵌多维表格）。"
+    parameters = {"report_markdown": "string(注入)", "version_name": "string(注入)", "product_name": "string(注入)", "build": "string(注入)", "stats_obj": "object(注入)"}
 
     def __init__(self, cfg) -> None:
         self.cfg = cfg
 
-    def run(self, report_markdown: str = "", version_name: str = "", product_name: str = "", build: str = "", **kwargs) -> ToolResult:
+    def run(self, report_markdown: str = "", version_name: str = "", product_name: str = "", build: str = "", stats_obj=None, **kwargs) -> ToolResult:
         f = self.cfg.feishu
 
         # 前置校验：任一不满足都如实返回失败，不做任何伪造
@@ -77,7 +77,11 @@ class PushFeishuTool(Tool):
                 url = f"{f.doc_base_url.rstrip('/')}/wiki/{node_token}"
             else:
                 url = f"{f.doc_base_url.rstrip('/')}/docx/{doc_token}"
-            return ToolResult(ok=True, data=url, meta={"doc_token": doc_token, "target": f.target, "import_format": ext})
+            # C：导入后将第 6 节缺陷清单内嵌为文档内多维表格块（非致命，失败不影响已推送的报告）。
+            embed_app = self._embed_defects(client, f, doc_token, stats_obj)
+            return ToolResult(ok=True, data=url,
+                              meta={"doc_token": doc_token, "target": f.target, "import_format": ext,
+                                    "defect_bitable_embed": embed_app})
         except FeishuError as exc:
             return ToolResult(ok=False, error=f"飞书推送失败：{exc}")
 
@@ -106,3 +110,27 @@ class PushFeishuTool(Tool):
         except FeishuError:
             return project_parent
         return created or project_parent
+
+    @staticmethod
+    def _embed_defects(client: FeishuClient, f, doc_token: str, stats_obj) -> str:
+        """C 方案：将两类重点缺陷内嵌为文档内多维表格块（追到报告正文末尾），每张表前配一个标题块。
+
+        顺序：①「当前版本遗留未解决bug」（激活待解决）②「当前版本延期处理bug」（延期处理）。仅当 defect_bitable +
+        defect_bitable_embed 开启且有缺陷行时执行；任何异常（权限/网络/未发版）一律返回空串，正文保留第 6 节计数
+        引导不阻断报告。成功返回各内嵌表 app_token 的逗号拼接。"""
+        if stats_obj is None or not (getattr(f, "defect_bitable", False) and getattr(f, "defect_bitable_embed", False)):
+            return ""
+        active = getattr(stats_obj, "active_bugs", None) or []
+        postponed = getattr(stats_obj, "postponed_bugs", None) or []
+        if not (active or postponed):
+            return ""
+        from ..report.renderer import DEFECT_FIELD_SPECS, bug_to_fields
+        groups = [
+            ("6.1 当前版本遗留未解决bug", [bug_to_fields(r, i + 1) for i, r in enumerate(active)]),
+            ("6.2 当前版本延期处理bug", [bug_to_fields(r, i + 1) for i, r in enumerate(postponed)]),
+        ]
+        try:
+            apps = client.embed_defect_bitable(doc_token, groups, DEFECT_FIELD_SPECS)
+            return ",".join(app for app, _tbl in apps)
+        except Exception:
+            return ""

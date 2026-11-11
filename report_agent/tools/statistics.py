@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional
 from ..rules.release_engine import evaluate
 from ..schemas.contracts import (
     ActivatedBucket,
+    BugRow,
     Conclusion,
     Integrity,
     LevelStatus,
@@ -158,6 +159,43 @@ def collect_people(bugs: List[Dict[str, Any]], target_build: str = "") -> Dict[s
     }
 
 
+def _to_bugrow(bug: Dict[str, Any]) -> BugRow:
+    """将一条规范化缺陷映射为第 6 节清单行（存原始值，展示层再中文化/净化）。"""
+    return BugRow(
+        id=bug.get("id"),
+        module=str(bug.get("module") or ""),
+        title=str(bug.get("title") or ""),
+        priority=bug.get("priority"),
+        type=str(bug.get("type") or ""),
+        steps=str(bug.get("steps") or ""),
+        status=str(bug.get("status") or ""),
+        opened_by=str(bug.get("openedBy") or ""),
+        opened_date=str(bug.get("openedDate") or ""),
+        opened_build=str(bug.get("openedBuild") or ""),
+        assigned_to=str(bug.get("assignedTo") or ""),
+        resolution=str(bug.get("resolution") or ""),
+    )
+
+
+def collect_defect_lists(bugs: List[Dict[str, Any]]) -> tuple:
+    """按用户口径分拣第 6 节两张清单（均取自本版本 scoped 缺陷全集，与缺陷总数/状态分布同口径）：
+
+    - 激活清单：status == active；
+    - 延期清单：resolution == postponed 且 status != closed（延期处理且未关闭）。
+    禅道激活会清空 resolution，两集通常互斥；若出现 active+postponed 极端数据，按字面定义两表均会包含。
+    """
+    active_rows: List[BugRow] = []
+    postponed_rows: List[BugRow] = []
+    for bug in bugs:
+        status = str(bug.get("status") or "").lower()
+        res = str(bug.get("resolution") or "").lower()
+        if status == "active":
+            active_rows.append(_to_bugrow(bug))
+        if res == "postponed" and status != "closed":
+            postponed_rows.append(_to_bugrow(bug))
+    return active_rows, postponed_rows
+
+
 def compute_statistics(version_info: Dict[str, Any] | None, bugs: List[Dict[str, Any]] | None) -> StatsResult:
     bugs = bugs or []
     version_info = version_info or {}
@@ -260,6 +298,9 @@ def compute_statistics(version_info: Dict[str, Any] | None, bugs: List[Dict[str,
     # data_complete 只取决于缺陷数据是否取数成功，时间缺失不影响结论输出
     integrity = Integrity(data_complete=(vi.fetch_status == "ok"), missing_fields=missing)
 
+    # 第 6 节缺陷清单：激活（status=active）与延期（postponed 且未关闭），与统计同取自 scoped 全集
+    active_bugs, postponed_bugs = collect_defect_lists(bugs)
+
     return StatsResult(
         version=vi,
         summary=summary,
@@ -268,6 +309,8 @@ def compute_statistics(version_info: Dict[str, Any] | None, bugs: List[Dict[str,
         conclusion=conclusion,
         integrity=integrity,
         people=people,
+        active_bugs=active_bugs,
+        postponed_bugs=postponed_bugs,
     )
 
 

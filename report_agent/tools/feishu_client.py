@@ -30,6 +30,17 @@ def _requests():
         raise FeishuError("缺少 requests 依赖，请先 pip install -r requirements.txt", "error") from exc
 
 
+def _split_bitable_token(token: str) -> tuple:
+    """内嵌多维表格块的 bitable.token 形如 BitableToken_TableID（TableID 以 tbl 开头），拆出 (app_token, table_id)。"""
+    if "_tbl" in token:
+        app, tbl = token.split("_tbl", 1)
+        return app, "tbl" + tbl
+    if "_" in token:
+        app, tbl = token.rsplit("_", 1)
+        return app, tbl
+    return token, ""
+
+
 class FeishuClient:
     def __init__(self, feishu_cfg) -> None:
         self.f = feishu_cfg
@@ -56,6 +67,26 @@ class FeishuClient:
         try:
             resp = requests.post(self._url(path), headers=headers, json=json_body,
                                  data=data, files=files, timeout=60)
+        except requests.exceptions.Timeout as exc:
+            raise FeishuError(f"飞书接口超时：{path}", "timeout") from exc
+        except requests.exceptions.RequestException as exc:
+            raise FeishuError(f"飞书接口连接失败：{exc}", "error") from exc
+        return self._check(resp, path)
+
+    def _put(self, path: str, json_body: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        return self._send("put", path, json_body)
+
+    def _patch(self, path: str, json_body: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        return self._send("patch", path, json_body)
+
+    def _delete(self, path: str, json_body: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        return self._send("delete", path, json_body)
+
+    def _send(self, method: str, path: str, json_body: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        requests = _requests()
+        try:
+            resp = getattr(requests, method)(self._url(path), headers=self._auth_header(),
+                                             json=json_body, timeout=60)
         except requests.exceptions.Timeout as exc:
             raise FeishuError(f"飞书接口超时：{path}", "timeout") from exc
         except requests.exceptions.RequestException as exc:
@@ -179,6 +210,138 @@ class FeishuClient:
         """用 node_token 反查节点信息（space_id / title / obj_token / parent_node_token）。"""
         payload = self._get("/wiki/v2/spaces/get_node", params={"token": node_token, "token_type": "node_token"})
         return payload.get("data", {}).get("node", {})
+
+    # ---- 多维表格 Bitable 基础写操作（供 C 内嵌复用）----
+    def batch_create_records(self, app_token: str, table_id: str,
+                             records: List[Dict[str, Any]], chunk: int = 500) -> None:
+        """批量写入记录（每批≤500，避开单次上限），records 元素为 {列名: 值}。需 base:record:create。"""
+        path = f"/bitable/v1/apps/{app_token}/tables/{table_id}/records/batch_create"
+        for i in range(0, len(records), chunk):
+            self._post(path, json_body={"records": [{"fields": rec} for rec in records[i:i + chunk]]})
+
+    # ---- 文档内嵌多维表格块（C 方案：第 6 节缺陷清单直接展开在正文）----
+    def insert_bitable_block(self, document_id: str) -> tuple:
+        """在文档末尾插入一个内嵌空多维表格块（block_type=18, view_type=1 数据表），返回 (app_token, table_id)。
+
+        需 docx:document（创建及编辑新版文档）。块返回的 bitable.token 形如 BitableToken_TableID，
+        拆出的 app_token/table_id 可被独立多维表格 API 直接读写（已实测）。
+        """
+        payload = self._post(f"/docx/v1/documents/{document_id}/blocks/{document_id}/children",
+                             json_body={"children": [{"block_type": 18, "bitable": {"view_type": 1}}]})
+        children = payload.get("data", {}).get("children", []) or []
+        token = ((children[0] if children else {}).get("bitable") or {}).get("token", "") if children else ""
+        if not token:
+            raise FeishuError("插入多维表格块未返回 bitable.token")
+        return _split_bitable_token(token)
+
+    def insert_heading_block(self, document_id: str, text: str, level: int = 3) -> None:
+        """在文档末尾追加一个标题块（默认三级，block_type=level+2：1级=3、3级=5），用于为内嵌表配标题。
+
+        需 docx:document。失败上抛由调用方（非致命）处理。
+        """
+        if not text:
+            return
+        key = f"heading{level}"
+        child = {"block_type": level + 2, key: {"elements": [{"text_run": {"content": text}}]}}
+        self._post(f"/docx/v1/documents/{document_id}/blocks/{document_id}/children",
+                   json_body={"children": [child]})
+
+    def list_fields(self, app_token: str, table_id: str) -> List[Dict[str, Any]]:
+        """列出数据表字段（含 field_id/is_primary/type），用于清理内嵌表默认列。"""
+        items: List[Dict[str, Any]] = []
+        page = ""
+        while True:
+            params: Dict[str, Any] = {"page_size": 100}
+            if page:
+                params["page_token"] = page
+            data = self._get(f"/bitable/v1/apps/{app_token}/tables/{table_id}/fields", params=params).get("data", {})
+            items.extend(data.get("items", []) or [])
+            if not data.get("has_more"):
+                break
+            page = data.get("page_token", "")
+        return items
+
+    def create_field(self, app_token: str, table_id: str, spec: Dict[str, Any]) -> str:
+        """向已存在的数据表新增一个字段（spec 形如 {field_name, type[, property]}），返回 field_id。需 base:field:create。"""
+        payload = self._post(f"/bitable/v1/apps/{app_token}/tables/{table_id}/fields", json_body=dict(spec))
+        return payload.get("data", {}).get("field", {}).get("field_id", "")
+
+    def update_field(self, app_token: str, table_id: str, field_id: str, field_name: str, ftype: int) -> None:
+        """更新字段名/类型（用于把内嵌表默认主列改名为我们的首列）。需 base:field:update。"""
+        self._put(f"/bitable/v1/apps/{app_token}/tables/{table_id}/fields/{field_id}",
+                  json_body={"field_name": field_name, "type": ftype})
+
+    def delete_field(self, app_token: str, table_id: str, field_id: str) -> None:
+        """删除字段（用于清理内嵌表自带的多余默认列，主列不可删）。需 base:field:delete。"""
+        self._delete(f"/bitable/v1/apps/{app_token}/tables/{table_id}/fields/{field_id}")
+
+    def list_record_ids(self, app_token: str, table_id: str) -> List[str]:
+        """列出数据表全部记录 ID（用于清理内嵌表自带的默认空行）。"""
+        ids: List[str] = []
+        page = ""
+        while True:
+            params: Dict[str, Any] = {"page_size": 500}
+            if page:
+                params["page_token"] = page
+            data = self._get(f"/bitable/v1/apps/{app_token}/tables/{table_id}/records", params=params).get("data", {})
+            ids.extend(r.get("record_id", "") for r in (data.get("items", []) or []) if r.get("record_id"))
+            if not data.get("has_more"):
+                break
+            page = data.get("page_token", "")
+        return ids
+
+    def delete_records(self, app_token: str, table_id: str, record_ids: List[str], chunk: int = 500) -> None:
+        """批量删除记录（每批≤500），record_ids 为记录 ID 列表。需 base:record:delete。"""
+        path = f"/bitable/v1/apps/{app_token}/tables/{table_id}/records/batch_delete"
+        for i in range(0, len(record_ids), chunk):
+            self._post(path, json_body={"records": record_ids[i:i + chunk]})
+
+    def rename_table(self, app_token: str, table_id: str, name: str) -> None:
+        """重命名数据表（多维表格无独立建表名接口，内嵌默认表建好后用 PATCH 改名）。需 base:table:update。"""
+        if name:
+            self._patch(f"/bitable/v1/apps/{app_token}/tables/{table_id}", json_body={"name": name})
+
+    def embed_defect_bitable(self, document_id: str, groups: List[tuple], field_specs: List[Dict[str, Any]]) -> List[tuple]:
+        """为每个分组各插入一个内嵌多维表格块并灌数据，返回各块的 (app_token, table_id) 列表。
+
+        每个块绑定自己的一张表（改名/清理默认列与空行/建列/写记录），使「延期处理清单」与「激活待解决清单」
+        在正文各自独立展开——而非单块内多表（单块只渲染其绑定的默认表，其余表不会显示）。异常上抛由上层捕获回退。
+        需 docx:document + base:field/record/table 增删改。
+        """
+        result: List[tuple] = []
+        for name, records in groups:
+            self.insert_heading_block(document_id, name)  # 先插标题块，再插其下的内嵌表
+            app, tbl = self.insert_bitable_block(document_id)
+            self._fill_embed_table(app, tbl, name, records, field_specs)
+            result.append((app, tbl))
+        return result
+
+    def _fill_embed_table(self, app: str, tbl: str, name: str,
+                          records: List[Dict[str, Any]], field_specs: List[Dict[str, Any]]) -> None:
+        """把一个内嵌块自带的默认表清理并改造成目标数据表：主列改名为首字段、删多余默认列、删默认空行、
+        补建其余列、表改名、灌入记录。"""
+        # 1) 清理默认表列：主列改名为首字段，删除其余默认列
+        fields = self.list_fields(app, tbl)
+        primary = next((f for f in fields if f.get("is_primary")), None)
+        head = field_specs[0]
+        if primary:
+            self.update_field(app, tbl, primary["field_id"], head["field_name"], head.get("type", 1))
+            for f in fields:
+                if not f.get("is_primary") and f.get("field_id"):
+                    self.delete_field(app, tbl, f["field_id"])
+        else:  # 异常兜底：无主列则全部新建
+            self.create_field(app, tbl, dict(head))
+        # 2) 补建其余字段
+        for spec in field_specs[1:]:
+            self.create_field(app, tbl, dict(spec))
+        # 3) 删除默认空行
+        junk_ids = self.list_record_ids(app, tbl)
+        if junk_ids:
+            self.delete_records(app, tbl, junk_ids)
+        # 4) 改名 + 灌记录
+        self.rename_table(app, tbl, name)
+        if records:
+            self.batch_create_records(app, tbl, records)
 
     def list_spaces(self) -> List[Dict[str, Any]]:
         items: List[Dict[str, Any]] = []
