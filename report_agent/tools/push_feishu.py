@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from .base import Tool, ToolResult
 from .feishu_client import FeishuClient, FeishuError
+from ..report.docx_export import md_to_docx_bytes
 
 
 def _doc_name(version_name: str) -> str:
@@ -46,8 +47,22 @@ class PushFeishuTool(Tool):
         name = _doc_name(version_name or product_name)
         try:
             client.get_tenant_token()
-            file_token = client.upload_bytes(name + ".md", report_markdown.encode("utf-8"), f.upload_folder_token)
-            ticket = client.create_import_task(file_token, name, f.upload_folder_token)
+            # 优先本地 md→docx（pandoc 将相对路径图表内嵌进 docx，飞书导入才不丢图）；
+            # 开关关闭、pandoc 缺失或转换失败时回退直接导入 md（文字/表格照常、仅图丢失，不阻断）。
+            docx_bytes = md_to_docx_bytes(report_markdown, self.cfg.report_dir,
+                                          image_scale=f.chart_display_scale) if f.import_as_docx else None
+            if docx_bytes is not None:
+                upload_name = name + ".docx"
+                content = docx_bytes
+                ext = "docx"
+                mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            else:
+                upload_name = name + ".md"
+                content = report_markdown.encode("utf-8")
+                ext = "md"
+                mime = "text/markdown"
+            file_token = client.upload_bytes(upload_name, content, f.upload_folder_token, mime=mime)
+            ticket = client.create_import_task(file_token, name, f.upload_folder_token, file_extension=ext)
             result = client.poll_import_result(ticket)
             doc_token = result.get("token", "")
             if not doc_token:
@@ -62,7 +77,7 @@ class PushFeishuTool(Tool):
                 url = f"{f.doc_base_url.rstrip('/')}/wiki/{node_token}"
             else:
                 url = f"{f.doc_base_url.rstrip('/')}/docx/{doc_token}"
-            return ToolResult(ok=True, data=url, meta={"doc_token": doc_token, "target": f.target})
+            return ToolResult(ok=True, data=url, meta={"doc_token": doc_token, "target": f.target, "import_format": ext})
         except FeishuError as exc:
             return ToolResult(ok=False, error=f"飞书推送失败：{exc}")
 

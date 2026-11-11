@@ -53,6 +53,12 @@ feishu:
   # 多项目落点：wiki_projects_parent=各项目子节点的容器（如“项目测试”），推送时按产品名在其下找同名子节点；
   # wiki_parent_node=兜底默认落点（未匹配到子节点时用）。两者 node_token 均放 .env。
   import_poll_seconds: 30
+  # 导入格式：true=先用本地 pandoc 把报告 md 转成内嵌图表的 docx 再导入（飞书才不丢图，需装 pandoc）；
+  # pandoc 缺失或转换失败会自动回退直接导 md（图丢失但不阻断）。false=始终直接导 md。
+  import_as_docx: true
+  # 仅放大图片在飞书文档中的显示尺寸（等比倍率，只改图，不改页面/正文）：1.0=不放大；
+  # 上限受飞书正文列宽约束（现约 5.83in），1.6 约可接近翻倍但仍可能被飞书自适应截断。
+  chart_display_scale: 1.4
 
 mock:
   # F6 故障注入开关：none | not_found | timeout | error | empty_bugs

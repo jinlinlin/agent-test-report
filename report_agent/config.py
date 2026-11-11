@@ -80,6 +80,8 @@ class FeishuConfig:
     wiki_parent_node: str = ""                 # 兜底默认落点 node_token（无匹配子节点时用）
     wiki_projects_parent: str = ""             # 各项目子节点的容器 node_token（按产品名在其下路由同名子节点）
     import_poll_seconds: int = 30
+    import_as_docx: bool = True                # 先用本地 pandoc 把 md 转成内嵌图表的 docx 再导入（失败自动回退 md）
+    chart_display_scale: float = 1.0           # 仅放大图片在飞书文档中的显示尺寸（等比倍率，1.0=不变；不改页面/正文）
 
 
 @dataclass
@@ -189,6 +191,8 @@ def load_config(settings_path: Path | str = SETTINGS_PATH, **overrides) -> Confi
             wiki_parent_node=os.getenv("FEISHU_WIKI_PARENT_NODE", "") or _get(_get(raw, "feishu", {}), "wiki_parent_node", ""),
             wiki_projects_parent=os.getenv("FEISHU_WIKI_PROJECTS_PARENT", "") or _get(_get(raw, "feishu", {}), "wiki_projects_parent", ""),
             import_poll_seconds=_get(_get(raw, "feishu", {}), "import_poll_seconds", 30),
+            import_as_docx=str(_get(_get(raw, "feishu", {}), "import_as_docx", True)).lower() in ("1", "true", "yes", "on"),
+            chart_display_scale=float(_get(_get(raw, "feishu", {}), "chart_display_scale", 1.0)),
         ),
         mock=MockConfig(fault=_get(_get(raw, "mock", {}), "fault", "none")),
         trace=TraceConfig(

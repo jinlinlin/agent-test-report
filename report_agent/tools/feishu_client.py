@@ -105,12 +105,12 @@ class FeishuClient:
         return self._token
 
     # ---- 云空间 Drive：上传 + 导入 ----
-    def upload_bytes(self, name: str, content: bytes, folder_token: str) -> str:
-        """把 Markdown 字节上传到云空间文件夹，返回 file_token。"""
+    def upload_bytes(self, name: str, content: bytes, folder_token: str, mime: str = "text/markdown") -> str:
+        """把文件字节上传到云空间文件夹，返回 file_token（mime 随文件类型变化）。"""
         requests = _requests()
         url = self._url("/drive/v1/files/upload_all")
         form = {"file_name": name, "parent_type": "explorer", "parent_node": folder_token, "size": str(len(content))}
-        files = {"file": (name, content, "text/markdown")}
+        files = {"file": (name, content, mime)}
         try:
             resp = requests.post(url, headers={"Authorization": self._bearer()}, data=form, files=files, timeout=60)
         except requests.exceptions.RequestException as exc:
@@ -118,10 +118,10 @@ class FeishuClient:
         payload = self._check(resp, "/drive/v1/files/upload_all")
         return payload.get("data", {}).get("file_token", "")
 
-    def create_import_task(self, file_token: str, name: str, folder_token: str) -> str:
-        """发起 markdown → docx 导入任务，返回 ticket。"""
+    def create_import_task(self, file_token: str, name: str, folder_token: str, file_extension: str = "md") -> str:
+        """发起导入任务（file_extension=md/docx → 云 docx），返回 ticket。"""
         body = {
-            "file_extension": "md",
+            "file_extension": file_extension,
             "file_token": file_token,
             "name": name,
             "type": "docx",
