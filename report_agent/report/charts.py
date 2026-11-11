@@ -56,7 +56,7 @@ def _status_bar(plt, stats: StatsResult, out: Path, dpi: int) -> None:
         pct = f"{v / total * 100:.1f}%" if total else "0.0%"  # 展示层格式化，非业务计算
         ax.text(b.get_x() + b.get_width() / 2, v, f"{v} 个\n{pct}", ha="center", va="bottom", fontsize=9)
     ax.set_ylabel("缺陷数")
-    ax.set_title(f"缺陷状态分布（共 {total} 个）", fontsize=12)
+    ax.set_title("缺陷状态分布", fontsize=12, pad=14)
     ax.set_ylim(0, max(values) * 1.22 + 1)
     fig.tight_layout()
     fig.savefig(out, dpi=dpi)
@@ -76,7 +76,7 @@ def _hbar(plt, names, values, colors, out: Path, dpi: int, title: str,
                 fmt(v), va="center", fontsize=9)
     ax.set_xlabel(label)
     ax.set_xlim(0, (max(values) + pad) * 1.08)
-    ax.set_title(title, fontsize=12)
+    ax.set_title(title, fontsize=12, pad=14)
     fig.tight_layout()
     fig.savefig(out, dpi=dpi)
 
@@ -90,7 +90,6 @@ def _activated_bar(plt, stats: StatsResult, out: Path, dpi: int) -> None:
     dist = s.activated_dist
     if not dist:
         raise ValueError("无激活次数分布数据")
-    total = sum(b.total for b in dist)
     # _hbar 首元素画在底部，整体反转后 0 次落在顶部
     pairs = [
         (f"{b.times} 次", b.total, COLOR_NOT_ACTIVATED if b.times == 0 else COLOR_ACTIVE)
@@ -98,7 +97,7 @@ def _activated_bar(plt, stats: StatsResult, out: Path, dpi: int) -> None:
     ][::-1]
     _hbar(plt, [p[0] for p in pairs], [p[1] for p in pairs], [p[2] for p in pairs],
           out, dpi,
-          f"Bug 激活次数分布（激活率 {s.activated_rate}，共 {total} 个）",
+          "Bug 激活次数分布",
           lambda v: f"{v} 个", "缺陷数", (7.2, max(3.2, 0.55 * len(dist) + 1.2)))
 
 
@@ -110,7 +109,6 @@ def _level_pie(plt, stats: StatsResult, out: Path, dpi: int) -> None:
     labels = [f"{r.level}（{r.total} 个）" for r in rows]
     values = [r.total for r in rows]
     palette = [COLOR_PIE_P1, COLOR_PIE_P2, COLOR_PIE_P3, COLOR_PIE_P4]  # P1粉 P2橙 P3蓝 P4绿
-    total = sum(values)
     fig, ax = plt.subplots(figsize=(6.4, 4.6))
     # 等级数超出预设四色时循环取色，避免 colors/values 长度不匹配导致整图静默丢失
     colors = [palette[i % len(palette)] for i in range(len(rows))]
@@ -124,7 +122,7 @@ def _level_pie(plt, stats: StatsResult, out: Path, dpi: int) -> None:
         wedgeprops={"edgecolor": "white", "linewidth": 1.2},  # 白边分隔，防浅色扇区粘连
         textprops={"fontsize": 9},
     )
-    ax.set_title(f"缺陷等级分布（共 {total} 个）", fontsize=12)
+    ax.set_title("缺陷等级分布", fontsize=12, pad=28)  # 饼图外圈标签占顶部空间，标题需更大间距
     ax.axis("equal")
     fig.tight_layout()
     fig.savefig(out, dpi=dpi)
@@ -142,12 +140,12 @@ def _person_bar(plt, counts, out: Path, dpi: int, color: str, title: str) -> Non
 
 def _person_submit_bar(plt, stats: StatsResult, out: Path, dpi: int) -> None:
     _person_bar(plt, stats.people.submit_counts, out, dpi, COLOR_MODULE,
-                f"每人提交 Bug 数（按提交人 openedBy 实算，共 {len(stats.people.submit_counts)} 人）")
+                "每人提交 Bug 数")
 
 
 def _person_resolve_bar(plt, stats: StatsResult, out: Path, dpi: int) -> None:
     _person_bar(plt, stats.people.resolve_counts, out, dpi, COLOR_PERSON_RESOLVE,
-                f"每人解决 Bug 数（按解决人 resolvedBy 实算，共 {len(stats.people.resolve_counts)} 人）")
+                "每人解决 Bug 数")
 
 
 _CHARTS: Dict[str, Callable] = {

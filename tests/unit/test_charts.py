@@ -64,11 +64,11 @@ def test_renderer_image_line_and_placeholder_fallback():
     stats = _stats()
     # 无 charts：数据图位回退占位（4.3/4.4 有实算表，图位无 key 也回退占位）
     md = render_report(stats)
-    assert T.CHART_PLACEHOLDER.format(item="缺陷状态分布图（已关闭/待解决/待验收/延期）") in md
-    assert "![缺陷状态分布图]" not in md
-    # 有 charts：对应位替换为图片行（相对路径），缺 key 的仍回退占位；4.1.1 彻底无图无占位
+    assert T.CHART_PLACEHOLDER.format(item="缺陷状态分布图") in md
+    assert "![](" not in md
+    # 有 charts：对应位替换为图片行（相对路径、无 alt），缺 key 的仍回退占位；4.1.1 彻底无图无占位
     md2 = render_report(stats, charts={"status_bar": "assets/UniResearch_V5.0.0/status_bar.png"})
-    assert "![缺陷状态分布图](assets/UniResearch_V5.0.0/status_bar.png)" in md2
+    assert "![](assets/UniResearch_V5.0.0/status_bar.png)" in md2
     assert "各模块缺陷分布图" not in md2
     assert T.CHART_PLACEHOLDER.format(item="每人提交 Bug 数柱状图") in md2
     assert T.CHART_PLACEHOLDER.format(item="每人解决 Bug 数柱状图") in md2
@@ -78,19 +78,18 @@ def test_tool_with_cfg_embeds_images(tmp_path):
     cfg = load_config(**{"report.output_dir": str(tmp_path), "charts.enabled": True})
     res = RenderReportTool(cfg).run(stats_obj=_stats())
     assert res.ok
-    for key, alt in [("status_bar", "缺陷状态分布图"), ("activated_bar", "Bug 激活次数分布图"),
-                     ("level_pie", "缺陷等级分布图"),
-                     ("person_submit_bar", "每人提交 Bug 数柱状图"), ("person_resolve_bar", "每人解决 Bug 数柱状图")]:
-        assert f"![{alt}](assets/UniResearch_V5.0.0/{key}.png)" in res.data
+    for key in ("status_bar", "activated_bar", "level_pie",
+                "person_submit_bar", "person_resolve_bar"):
+        assert f"![](assets/UniResearch_V5.0.0/{key}.png)" in res.data
         assert (tmp_path / "assets" / "UniResearch_V5.0.0" / f"{key}.png").exists()
 
 
 def test_tool_without_cfg_or_disabled_keeps_placeholders(tmp_path):
     stats = _stats()
-    assert T.CHART_PLACEHOLDER.format(item="缺陷状态分布图（已关闭/待解决/待验收/延期）") in RenderReportTool().run(stats_obj=stats).data
+    assert T.CHART_PLACEHOLDER.format(item="缺陷状态分布图") in RenderReportTool().run(stats_obj=stats).data
     cfg = load_config(**{"report.output_dir": str(tmp_path), "charts.enabled": False})
     md = RenderReportTool(cfg).run(stats_obj=stats).data
-    assert "![缺陷状态分布图]" not in md
+    assert "![](" not in md
     assert not (tmp_path / "assets").exists()
 
 
