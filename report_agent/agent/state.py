@@ -19,6 +19,7 @@ class AgentState:
     bugs: Optional[List[Dict[str, Any]]] = None
     stats: Optional[Dict[str, Any]] = None
     stats_obj: Optional[Any] = None          # StatsResult 对象，供渲染直接使用
+    conclusion_polished: bool = False        # F17：润色工具已执行标记（防规划器重复调用）
     report_markdown: Optional[str] = None
 
     feishu_doc_url: Optional[str] = None     # 飞书推送成功后的文档链接（V2）
@@ -38,6 +39,7 @@ class AgentState:
             "has_version_info": self.version_info is not None,
             "bugs_count": len(self.bugs) if self.bugs is not None else None,
             "has_stats": self.stats is not None,
+            "conclusion_polished": self.conclusion_polished,
             "has_report": self.report_markdown is not None,
             "feishu_doc_url": self.feishu_doc_url,
             "fail_reason": self.fail_reason,

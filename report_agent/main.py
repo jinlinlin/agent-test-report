@@ -16,6 +16,7 @@ from .agent.planner import build_planner
 from .config import load_config
 from .llm.client import LLMClient
 from .tools.base import ToolRegistry
+from .tools.polish_conclusion import PolishConclusionTool
 from .tools.push_feishu import PushFeishuTool
 from .tools.render_report import RenderReportTool
 from .tools.statistics import ComputeStatisticsTool
@@ -24,19 +25,22 @@ from .tools.zentao_version import GetVersionInfoTool
 from .trace.tracer import Tracer
 
 
-def build_registry(cfg) -> ToolRegistry:
+def build_registry(cfg, llm=None) -> ToolRegistry:
     reg = ToolRegistry()
     reg.register(GetVersionInfoTool(cfg))
     reg.register(GetVersionBugsTool(cfg))
     reg.register(ComputeStatisticsTool())
+    # F17：仅开关开启时注册润色工具，关闭时工具集与链路行为与现状完全一致
+    if cfg.report.polish_conclusion:
+        reg.register(PolishConclusionTool(cfg, llm))
     reg.register(RenderReportTool(cfg))  # cfg 用于 charts 开关与 assets 落盘目录
     reg.register(PushFeishuTool(cfg))
     return reg
 
 
 def build_agent(cfg) -> tuple[ReportAgent, Tracer]:
-    registry = build_registry(cfg)
     llm = LLMClient(cfg)
+    registry = build_registry(cfg, llm)
     planner = build_planner(cfg, llm, registry.specs())
     tracer = Tracer(enabled=cfg.trace.enabled, trace_dir=cfg.trace_dir)
     return ReportAgent(cfg, registry, planner, tracer), tracer
@@ -132,6 +136,8 @@ def main(argv=None) -> int:
                         help="禅道接入自检：验证认证/端点并打印真实字段名（需先配好 base_url 与账号）")
     parser.add_argument("--push-feishu", action="store_true",
                         help="生成后将报告推送至飞书云文档/知识库（需先在 .env 配好飞书凭据与 token）")
+    parser.add_argument("--polish", action="store_true",
+                        help="开启 F17 结论段 LLM 润色（覆盖 report.polish_conclusion；数字不一致自动回退模板）")
     args = parser.parse_args(argv)
 
     overrides = {}
@@ -143,6 +149,8 @@ def main(argv=None) -> int:
         overrides["zentao.mode"] = args.mode
     if args.push_feishu:
         overrides["feishu.enabled"] = True
+    if args.polish:
+        overrides["report.polish_conclusion"] = True
 
     if args.probe:
         return run_probe(args.user_input, **overrides)

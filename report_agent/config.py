@@ -106,6 +106,7 @@ class TraceConfig:
 @dataclass
 class ReportConfig:
     output_dir: str = "output"
+    polish_conclusion: bool = False  # F17：开启后 5.1 发布建议由 LLM 润色（带数字一致性校验，校验失败回退模板原文）
 
 
 @dataclass
@@ -214,7 +215,10 @@ def load_config(settings_path: Path | str = SETTINGS_PATH, **overrides) -> Confi
             enabled=_get(_get(raw, "trace", {}), "enabled", True),
             dir=_get(_get(raw, "trace", {}), "dir", "traces"),
         ),
-        report=ReportConfig(output_dir=_get(_get(raw, "report", {}), "output_dir", "output")),
+        report=ReportConfig(
+            output_dir=_get(_get(raw, "report", {}), "output_dir", "output"),
+            polish_conclusion=str(_get(_get(raw, "report", {}), "polish_conclusion", False)).lower() in ("1", "true", "yes", "on"),
+        ),
         charts=ChartsConfig(
             enabled=_get(_get(raw, "charts", {}), "enabled", True),
             dpi=_get(_get(raw, "charts", {}), "dpi", 150),

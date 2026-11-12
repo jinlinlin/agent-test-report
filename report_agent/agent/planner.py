@@ -79,6 +79,12 @@ class DeterministicPlanner:
         if state.stats is None:
             return Action(type="tool", tool="compute_statistics", args={}, thought="第三步：调用独立统计工具计算指标")
 
+        # 第三步半（可选，F17）：开关开启时在渲染前润色 5.1 发布建议（工具内含数字一致性校验）
+        if (self.cfg is not None and self.cfg.report.polish_conclusion
+                and not state.conclusion_polished):
+            return Action(type="tool", tool="polish_conclusion", args={},
+                          thought="第三步半：由 LLM 润色发布建议（数字原样引用，校验失败回退模板）")
+
         if state.report_markdown is None:
             return Action(type="tool", tool="render_report", args={}, thought="第四步：按章节结构渲染 Markdown 报告")
 
@@ -192,6 +198,8 @@ class NativeFCPlanner:
             return None
         elif tool_name == "compute_statistics":
             return state.stats
+        elif tool_name == "polish_conclusion":
+            return {"polished": state.conclusion_polished}
         elif tool_name == "render_report":
             return {"ok": state.report_markdown is not None, "length": len(state.report_markdown or "")}
         elif tool_name == "push_feishu":

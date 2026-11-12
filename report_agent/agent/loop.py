@@ -99,6 +99,8 @@ class ReportAgent:
         elif action.tool == "compute_statistics":
             kwargs["version_info"] = state.version_info
             kwargs["bugs"] = state.bugs
+        elif action.tool == "polish_conclusion":
+            kwargs["stats_obj"] = state.stats_obj
         elif action.tool == "render_report":
             kwargs["stats_obj"] = state.stats_obj
             vi = state.version_info or {}
@@ -140,6 +142,9 @@ class ReportAgent:
         elif tool_name == "compute_statistics":
             state.stats = result.data
             state.stats_obj = result.meta.get("stats_obj")
+        elif tool_name == "polish_conclusion":
+            # 润色结果已就地写回 stats_obj.conclusion.release_advice，仅记执行标记
+            state.conclusion_polished = True
         elif tool_name == "render_report":
             state.report_markdown = result.data
             # 若还需推送飞书，则暂不置 finished，交由规划器再走一步 push_feishu

@@ -29,6 +29,7 @@ agent-test-report/
 │   │   ├── zentao_version.py  #   F1 版本信息工具
 │   │   ├── zentao_bugs.py     #   F2 缺陷明细工具
 │   │   ├── statistics.py      #   F3 独立统计工具（纯函数，禁止 LLM 汇总）
+│   │   ├── polish_conclusion.py # F17 结论段 LLM 润色（数字一致性校验，默认关）
 │   │   ├── render_report.py   #   F4 报告渲染工具
 │   │   └── mock_zentao.py     #   F6 mock 数据源 + 故障注入
 │   ├── rules/release_engine.py#   F8 发布建议规则引擎（确定性判定）
@@ -176,6 +177,7 @@ python -m report_agent.main "帮我生成 一表通项目 理工1.0.0 的测试�
 
 1. 在 `config/.env` 填 `OPENAI_API_KEY`（OpenAI 兼容端点在 `settings.yaml` 的 `llm.base_url` 配置）。
 2. `llm.use_native_fc: true` 且存在 API Key 时，规划器使用原生 Function Calling 协议（模型自主决定工具调用顺序）；否则回退确定性规划，保证链路可离线复现。
+3. `report.polish_conclusion: true`（默认关）时，5.1 发布建议在渲染前由模型润色：数字只能原样引用统计输入材料，新增/丢失数字一律回退模板原文（F17，验收 A9）。
 
 ## 发布准入标准（F8）
 

@@ -82,6 +82,8 @@ trace:
 
 report:
   output_dir: "output"
+  # F17 结论段 LLM 润色：开启后 5.1 发布建议由模型组织语言（数字必须与统计结果一致，不一致自动回退模板原文）；默认关
+  polish_conclusion: false
 
 charts:
   # matplotlib 本地生成图表（状态条形柱状图/激活次数与每人提交解决水平柱状图/等级饼图；4.1.1 模块分布仅表格不出图）到 output/assets/<版本>/，
