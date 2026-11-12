@@ -6,7 +6,7 @@ from report_agent.tools import zentao_client as zc
 from report_agent.tools.zentao_bugs import GetVersionBugsTool
 from report_agent.tools.zentao_version import GetVersionInfoTool
 
-BASE = {"llm.use_llm_planner": False, "zentao.mode": "live", "zentao.base_url": "https://zt.test",
+BASE = {"llm.use_native_fc": False, "zentao.mode": "live", "zentao.base_url": "https://zt.test",
         "zentao.account": "ro", "zentao.password": "pw", "trace.enabled": False}
 
 

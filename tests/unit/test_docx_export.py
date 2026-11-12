@@ -19,7 +19,7 @@ from report_agent.tools.push_feishu import PushFeishuTool
 # 1x1 PNG（可被 pandoc 解码并内嵌）
 _PNG_B64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
 
-BASE = {"llm.use_llm_planner": False, "zentao.mode": "mock", "trace.enabled": False}
+BASE = {"llm.use_native_fc": False, "zentao.mode": "mock", "trace.enabled": False}
 
 
 def _cfg(**over):

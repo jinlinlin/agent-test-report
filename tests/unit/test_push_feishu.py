@@ -14,7 +14,7 @@ from report_agent.tools.push_feishu import PushFeishuTool
 from report_agent.tools.feishu_client import FeishuClient
 from report_agent.trace.tracer import Tracer
 
-BASE = {"llm.use_llm_planner": False, "zentao.mode": "mock", "trace.enabled": False}
+BASE = {"llm.use_native_fc": False, "zentao.mode": "mock", "trace.enabled": False}
 
 
 def _feishu_cfg(**over):

@@ -17,7 +17,7 @@ from report_agent.tools import render_report as rr
 from report_agent.tools.feishu_client import FeishuClient
 from report_agent.tools.statistics import compute_statistics
 
-BASE = {"llm.use_llm_planner": False, "zentao.mode": "mock", "trace.enabled": False}
+BASE = {"llm.use_native_fc": False, "zentao.mode": "mock", "trace.enabled": False}
 
 
 def _stats(bugs):

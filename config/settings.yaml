@@ -2,13 +2,14 @@
 # 说明：V1 默认用 mock 数据源离线跑通链路，接真实禅道时把 zentao.mode 改为 live 并配置 .env
 
 llm:
-  # OpenAI 兼容端点；换国产模型时改 base_url 即可（如各类 OpenAI 兼容网关）
-  base_url: "https://api.openai.com/v1"
-  model: "gpt-4o-mini"
+  # DeepSeek（OpenAI 兼容协议）；换回 OpenAI 时改 base_url 和 model 即可
+  base_url: "https://api.deepseek.com/v1"
+  model: "deepseek-chat"
   temperature: 0.0
   max_tokens: 2048
   # 无 OPENAI_API_KEY 时自动回退到确定性规划器（脚本化取数顺序），保证链路可离线跑通
-  use_llm_planner: true
+  # 原生 Function Calling 协议开关（true=走 tools 参数+tool_calls 解析，false=确定性规划）
+  use_native_fc: true
 
 agent:
   max_steps: 12          # 执行上限；验证 V1-005（步数超限）时调小，例如 3

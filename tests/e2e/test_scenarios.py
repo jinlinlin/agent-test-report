@@ -1,4 +1,4 @@
-"""E2E 场景测试（对应需求文档 8.1 的 V1-xxx）。
+"""E2E 场景测试（验证需求文档第 10 章验收口径；V1-xxx 为测试侧用例编号）。
 
 统一用确定性规划器（关闭 LLM），保证离线可复现。
 """
@@ -9,7 +9,7 @@ from report_agent.llm.client import LLMClient
 from report_agent.main import build_registry
 from report_agent.trace.tracer import Tracer
 
-BASE = {"llm.use_llm_planner": False, "zentao.mode": "mock", "trace.enabled": False, "charts.enabled": False}
+BASE = {"llm.use_native_fc": False, "zentao.mode": "mock", "trace.enabled": False, "charts.enabled": False}
 
 
 def _run(user_input, **overrides):

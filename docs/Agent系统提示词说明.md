@@ -8,10 +8,10 @@
 
 | 模式 | 类 | 触发条件 | 说明 |
 |------|----|----------|------|
-| 确定性规划 | `DeterministicPlanner` | 无 `OPENAI_API_KEY`，或 `use_llm_planner=false`，或 LLM 解析失败回退 | 按主链路固定顺序脚本化规划，**离线即可跑通全链路**；亦作为 V1-006 对照实验基线 |
-| LLM 规划 | `LLMPlanner` | 配置了可用 LLM 且 `use_llm_planner=true` | 让模型在工具集中自主选下一步；输出 JSON 动作，解析失败自动回退确定性规划 |
+| 确定性规划 | `DeterministicPlanner` | 无 `OPENAI_API_KEY`，或 `use_native_fc=false`，或原生 FC 失败回退 | 按主链路固定顺序脚本化规划，**离线即可跑通全链路**；亦作为 V1-006 对照实验基线 |
+| 原生 FC 规划 | `NativeFCPlanner` | 配置了可用 LLM 且 `use_native_fc=true` | 使用原生 Function Calling 协议（tools 参数 + tool_calls 解析 + role:tool 回传），模型自主决定调用顺序；失败自动回退确定性规划 |
 
-选择逻辑见 `build_planner()`：仅当 `use_llm_planner and llm_client.available` 才用 `LLMPlanner`，否则 `DeterministicPlanner`。
+选择逻辑见 `build_planner()`：仅当 `use_native_fc and llm_client.available` 才用 `NativeFCPlanner`，否则 `DeterministicPlanner`。
 
 ## 2. 主链路动作顺序（两种模式共同遵守）
 
@@ -36,20 +36,19 @@
 | `report_markdown is None` | `render_report` | 第四步：按章节结构渲染 Markdown 报告 |
 | 以上都有 | `finish` | 报告已生成，结束 |
 
-## 4. LLM 规划器提示词全文
+## 4. 原生 FC 规划器机制
 
-`LLMPlanner._build_prompt(state)` 组装的完整 prompt（无独立 system 角色，全部并入 user 消息）：
+`NativeFCPlanner` 不使用单一 prompt 拼接，而是维护多轮消息历史：
 
-```text
-你是测试报告生成 Agent 的规划器。根据当前状态选择下一步动作，只输出 JSON。
-可用工具：{tool_specs}          # 由 ToolRegistry.specs() 注入，见《工具定义说明》
-当前状态：{state_snapshot}       # state.snapshot()：已完成的取数/统计摘要，不含大对象全量
-主链路顺序：get_version_info → get_version_bugs → compute_statistics → render_report → finish。
-取数失败则 finish。输出格式：{"thought": "...", "type": "tool|finish", "tool": "工具名", "args": {}}
-只输出 JSON，不要多余文字。
-```
+1. **初始化**：`_init_messages()` 设置 system（角色描述 + 目标）+ user（版本名）
+2. **调用模型**：`llm.complete_with_tools(messages, tools=[...])` 其中 tools 为 `ToolRegistry.specs()` 转为 OpenAI 格式
+3. **解析响应**：`msg.tool_calls[0].function.name/arguments` 结构化字段，不需要手动解析 JSON
+4. **回传观察**：工具执行后 `_append_tool_observation()` 以 `{"role":"tool", "tool_call_id":..., "content":...}` 追加到历史
+5. **循环**：模型看到 observation 后自主决定下一个工具或输出最终回答
 
-动作解析（`_parse`）：容错截取首个 `{` 到末个 `}`，`type` 限 `tool|finish`，非法即回退确定性规划。
+注意：**prompt 中不包含执行顺序提示**，模型从工具描述和已有 observation 自行推断。
+
+回退机制：`next_action()` 内任何异常（API 失败、网络超时、余额不足等）均自动回退到 `DeterministicPlanner`，保证主链路不中断。
 
 ## 5. 防幻觉硬约束
 

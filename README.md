@@ -50,7 +50,7 @@ agent-test-report/
 
 | 需求组件 | 代码位置 |
 |----------|----------|
-| LLM 规划推理 | `agent/planner.py`（LLMPlanner） |
+| LLM 规划推理 | `agent/planner.py`（NativeFCPlanner） |
 | 工具调用 | `tools/` + `agent/loop.py::_exec_tool` |
 | 短期记忆 State | `agent/state.py` |
 | 循环控制器 + 终止条件 | `agent/loop.py` + `agent/termination.py` + `config.agent.max_steps` |
@@ -175,7 +175,7 @@ python -m report_agent.main "帮我生成 一表通项目 理工1.0.0 的测试�
 ### 二、接真实 LLM 规划
 
 1. 在 `config/.env` 填 `OPENAI_API_KEY`（OpenAI 兼容端点在 `settings.yaml` 的 `llm.base_url` 配置）。
-2. `llm.use_llm_planner: true` 且存在 API Key 时，规划器自动切换为 LLM 模式；否则回退确定性规划，保证链路可离线复现。
+2. `llm.use_native_fc: true` 且存在 API Key 时，规划器使用原生 Function Calling 协议（模型自主决定工具调用顺序）；否则回退确定性规划，保证链路可离线复现。
 
 ## 发布准入标准（F8）
 

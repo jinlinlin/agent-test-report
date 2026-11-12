@@ -1,8 +1,9 @@
-"""规划器：决定下一步动作（LLM 规划推理）。
+"""规划器：决定下一步动作。
 
 提供两种实现：
 - DeterministicPlanner：脚本化取数顺序，无需 API Key 即可跑通链路（也用于测试与 V1-006 对照基线）。
-- LLMPlanner：调用 OpenAI 兼容接口，让模型在工具集中自主选择下一步；解析失败回退到确定性规划。
+- NativeFCPlanner：使用原生 Function Calling 协议（tools 参数 + tool_calls 解析 + role:tool 回传），
+  模型自主决定调用哪个工具与参数；失败回退到确定性规划。
 
 动作类型：
 - tool：调用某工具
@@ -14,7 +15,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from .state import AgentState
 
@@ -88,60 +89,123 @@ class DeterministicPlanner:
         return Action(type="finish", thought="报告已生成，结束")
 
 
-class LLMPlanner:
-    """让 LLM 在工具集中自主选择下一步；失败回退确定性规划。"""
+class NativeFCPlanner:
+    """原生 Function Calling 协议规划器。
 
-    name = "llm"
+    与旧的 prompt-based 规划方式的核心区别：
+    - 工具定义通过 API 的 tools 参数传入（非拼接到 prompt 文本）
+    - 模型返回结构化 tool_calls（不需要自己 json.loads 解析）
+    - 维护多轮消息历史，工具结果以 role="tool" 回传模型（而非每轮重建 state.snapshot）
+    - 不告诉模型执行顺序，由模型自己从工具描述推断下一步
+    """
+
+    name = "native_fc"
 
     def __init__(self, llm_client, tool_specs, fallback: Optional[DeterministicPlanner] = None) -> None:
         self.llm = llm_client
         self.tool_specs = tool_specs
         self.fallback = fallback or DeterministicPlanner()
+        # 原生 FC 协议转换：把 Tool.spec() 输出转为 OpenAI tools 格式
+        self._tools = [
+            {"type": "function", "function": spec}
+            for spec in tool_specs
+        ]
+        self._messages: List[Dict[str, Any]] = []
+        self._initialized = False
+        self._last_tool_call_id: str = ""
+        self._last_tool_name: str = ""
 
     def next_action(self, state: AgentState) -> Action:
         if state.version_name is None:
             return Action(type="clarify", thought="输入未识别到版本名称，需向用户澄清")
+
         try:
-            prompt = self._build_prompt(state)
-            raw = self.llm.complete(prompt)
-            action = self._parse(raw)
-            if action is not None:
-                return action
-        except Exception:
-            pass
-        return self.fallback.next_action(state)
+            if not self._initialized:
+                self._init_messages(state)
+                self._initialized = True
+            else:
+                # 把上一步工具执行结果以 role="tool" 回传模型（这就是原生 FC 的 observation 机制）
+                self._append_tool_observation(state)
 
-    def _build_prompt(self, state: AgentState) -> str:
-        tools = json.dumps(self.tool_specs, ensure_ascii=False)
-        snap = json.dumps(state.snapshot(), ensure_ascii=False)
-        return (
-            "你是测试报告生成 Agent 的规划器。根据当前状态选择下一步动作，只输出 JSON。\n"
-            f"可用工具：{tools}\n"
-            f"当前状态：{snap}\n"
-            "主链路顺序：get_version_info → get_version_bugs → compute_statistics → render_report → finish。\n"
-            "取数失败则 finish。输出格式：{\"thought\": \"...\", \"type\": \"tool|finish\", \"tool\": \"工具名\", \"args\": {}}\n"
-            "只输出 JSON，不要多余文字。"
-        )
+            # 调用模型：不告知执行顺序，模型自主决定下一步
+            msg = self.llm.complete_with_tools(self._messages, self._tools)
+            self._messages.append(msg)  # 把模型响应加入历史
 
-    def _parse(self, raw: str) -> Optional[Action]:
-        text = (raw or "").strip()
-        # 容错：截取第一个 { 到最后一个 }
-        if "{" in text and "}" in text:
-            text = text[text.index("{"): text.rindex("}") + 1]
-        data = json.loads(text)
-        atype = data.get("type", "tool")
-        if atype not in ("tool", "finish"):
+            # 解析响应：有 tool_calls → 继续执行工具；无 tool_calls → 任务完成
+            if msg.tool_calls:
+                tc = msg.tool_calls[0]  # 取第一个（单次工具调用模式）
+                self._last_tool_call_id = tc.id
+                self._last_tool_name = tc.function.name
+                args = json.loads(tc.function.arguments) if tc.function.arguments else {}
+                thought = msg.content or f"模型选择调用 {tc.function.name}"
+                return Action(type="tool", tool=tc.function.name, args=args, thought=thought)
+            else:
+                # 模型认为任务完成，返回最终回答
+                return Action(type="finish", thought=msg.content or "模型判断任务完成")
+
+        except Exception as exc:
+            # 原生 FC 失败时回退到确定性规划（保证生产可用性）
+            return self.fallback.next_action(state)
+
+    def _init_messages(self, state: AgentState) -> None:
+        """初始化对话历史：系统提示 + 用户目标。不包含执行顺序提示！"""
+        self._messages = [
+            {
+                "role": "system",
+                "content": (
+                    "你是测试报告生成 Agent。你的目标是根据用户请求生成测试报告。\n"
+                    "你可以调用以下工具完成任务：获取版本信息、获取缺陷列表、计算统计、渲染报告。\n"
+                    "每次只调用一个最合适的工具，等待结果后再决定下一步。\n"
+                    "当报告已生成后，输出最终回答表示任务完成。"
+                ),
+            },
+            {
+                "role": "user",
+                "content": f"请为版本 {state.version_name} 生成测试报告。",
+            },
+        ]
+
+    def _append_tool_observation(self, state: AgentState) -> None:
+        """把上一步工具执行的结果以 role="tool" 消息回传给模型。
+
+        这是原生 FC 协议的关键环节：模型看到 observation 后自主决定下一步。
+        """
+        # 从 state 中提取上一步工具的结果数据
+        result_data = self._extract_result_for_tool(self._last_tool_name, state)
+        # 截断过长的结果（避免超 token）
+        content = json.dumps(result_data, ensure_ascii=False, default=str)[:3000]
+        self._messages.append({
+            "role": "tool",
+            "tool_call_id": self._last_tool_call_id,
+            "content": content,
+        })
+
+    @staticmethod
+    def _extract_result_for_tool(tool_name: str, state: AgentState):
+        """根据工具名从 State 提取对应的执行结果。"""
+        if tool_name == "get_version_info":
+            return state.version_info
+        elif tool_name == "get_version_bugs":
+            # 缺陷列表可能很长，只返回摘要给模型
+            if state.bugs is not None:
+                return {"count": len(state.bugs), "sample": state.bugs[:3] if state.bugs else []}
             return None
-        return Action(
-            type=atype,
-            tool=data.get("tool", ""),
-            args=data.get("args", {}) or {},
-            thought=data.get("thought", ""),
-        )
+        elif tool_name == "compute_statistics":
+            return state.stats
+        elif tool_name == "render_report":
+            return {"ok": state.report_markdown is not None, "length": len(state.report_markdown or "")}
+        elif tool_name == "push_feishu":
+            return {"url": state.feishu_doc_url, "error": state.feishu_error}
+        return {"done": True}
 
 
 def build_planner(cfg, llm_client, tool_specs) -> Any:
+    """根据配置组装规划器。
+
+    use_native_fc=true 且有 API Key → NativeFCPlanner（原生 Function Calling）
+    否则 → DeterministicPlanner（确定性脚本化规划）
+    """
     det = DeterministicPlanner(cfg)
-    if cfg.llm.use_llm_planner and llm_client is not None and llm_client.available:
-        return LLMPlanner(llm_client, tool_specs, fallback=det)
+    if cfg.llm.use_native_fc and llm_client is not None and llm_client.available:
+        return NativeFCPlanner(llm_client, tool_specs, fallback=det)
     return det

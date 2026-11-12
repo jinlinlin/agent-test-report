@@ -23,7 +23,7 @@ class LLMConfig:
     model: str = "gpt-4o-mini"
     temperature: float = 0.0
     max_tokens: int = 2048
-    use_llm_planner: bool = True
+    use_native_fc: bool = False
     api_key: str = ""
 
 
@@ -155,7 +155,7 @@ def load_config(settings_path: Path | str = SETTINGS_PATH, **overrides) -> Confi
             model=_get(_get(raw, "llm", {}), "model", LLMConfig.model),
             temperature=_get(_get(raw, "llm", {}), "temperature", LLMConfig.temperature),
             max_tokens=_get(_get(raw, "llm", {}), "max_tokens", LLMConfig.max_tokens),
-            use_llm_planner=_get(_get(raw, "llm", {}), "use_llm_planner", True),
+            use_native_fc=_get(_get(raw, "llm", {}), "use_native_fc", False),
             api_key=os.getenv("OPENAI_API_KEY", ""),
         ),
         agent=AgentConfig(
