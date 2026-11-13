@@ -534,3 +534,18 @@ class FeishuClient:
         except FeishuError:
             return ""
         return str(payload.get("data", {}).get("content", "") or "")
+
+    def read_doc_blocks(self, doc_id: str) -> list:
+        """读新版文档块列表（GET /docx/v1/documents/{doc_id}/blocks，含表格单元格与 hyperlink）。
+
+        raw_content 只有纯文本、会丢失超链接的真实 URL（只剩显示文字），需要链接信息时用本接口。
+        只读不写；doc_id 为空、接口失败/无权限/超时一律返回空列表（上层回退占位），绝不抛断主链路。
+        """
+        doc_id = str(doc_id or "").strip()
+        if not doc_id:
+            return []
+        try:
+            payload = self._get(f"/docx/v1/documents/{doc_id}/blocks", params={"page_size": 500})
+        except FeishuError:
+            return []
+        return list(payload.get("data", {}).get("items", []) or [])

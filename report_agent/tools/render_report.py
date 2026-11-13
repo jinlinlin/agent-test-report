@@ -28,8 +28,9 @@ class RenderReportTool(Tool):
         if stats_obj is None:
             return ToolResult(ok=False, error="缺少统计结果，无法渲染报告")
         charts = self._render_charts(stats_obj)
-        # 飞书实检（需求/大纲/用例）为事实优先，项目记忆（手册/UI/原型）补充；同键时实检覆盖记忆
-        ref_links = {**(project_doc_links or {}), **self._resolve_ref_links(product_name, build)}
+        # 三层合并优先级递增：项目记忆（手册/UI/原型兜底）< 项目层链接汇总实检 < 版本目录实检（大纲/用例/需求）
+        doc_index = self._resolve_doc_index(product_name)
+        ref_links = {**(project_doc_links or {}), **doc_index, **self._resolve_ref_links(product_name, build)}
         test_scope = self._resolve_test_scope(product_name, build)
         test_env = self._resolve_test_env(product_name)
         embed = self._defect_embed_mode(stats_obj)
@@ -38,7 +39,8 @@ class RenderReportTool(Tool):
         return ToolResult(ok=True, data=markdown,
                           meta={"ref_doc_links": ref_links, "defect_bitable_embed": embed,
                                 "test_scope_filled": bool(test_scope),
-                                "test_env_filled": bool(test_env and test_env.get("rows"))})
+                                "test_env_filled": bool(test_env and test_env.get("rows")),
+                                "doc_index_filled": bool(doc_index)})
 
     def _defect_embed_mode(self, stats_obj) -> bool:
         """第 6 节是否走 C（文档内嵌多维表格）：飞书启用 + 开 defect_bitable + 开 defect_bitable_embed + 有缺陷行。
@@ -125,6 +127,28 @@ class RenderReportTool(Tool):
             return resolve_test_env(FeishuClient(f), product_name, list(env_cfg.doc_keywords))
         except Exception:
             return None
+
+    def _resolve_doc_index(self, product_name: str):
+        """§1.3 手册/UI/原型链接接地：仅当 doc_index.enabled + 飞书配齐时，从项目层链接汇总文档逐字提取外链。
+
+        数据源复用 2.2 同一套项目层候选检索（深度 ≤2、跳过版本目录），读 blocks 解析「文档名|链接」相邻行组。
+        任何异常/未命中返回 {} → 相应行维持记忆/人工占位；关闭时零触碰网络，行为与现状逐字一致。
+        """
+        cfg = self.cfg
+        if cfg is None:
+            return {}
+        idx_cfg = getattr(cfg, "doc_index", None)
+        if idx_cfg is None or not getattr(idx_cfg, "enabled", False):
+            return {}
+        f = cfg.feishu
+        if not (f.enabled and product_name and f.app_id and f.app_secret
+                and f.wiki_space_id and f.wiki_projects_parent):
+            return {}
+        try:
+            from ..report.doc_index import resolve_project_doc_index
+            return resolve_project_doc_index(FeishuClient(f), product_name, list(idx_cfg.doc_keywords))
+        except Exception:
+            return {}
 
     def _render_charts(self, stats_obj):
         """返回 {图key: 相对报告文件(output/) 的 posix 路径}；未启用/失败一律 None → 占位回退。"""

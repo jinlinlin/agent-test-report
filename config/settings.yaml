@@ -122,3 +122,13 @@ test_env:
   doc_keywords:
     - "测试环境"
     - "账号"
+
+doc_index:
+  # §1.3 手册/UI/原型链接接地：从知识库项目层「链接汇总文档」（如 Uniresearch原型、UI设计、用户手册链接）逐字提取外链。
+  # 复用 2.2 同一套项目层候选检索（深度 ≤2、跳过版本目录）；因 raw_content 会丢超链接 URL，改读 docx blocks 解析「文档名|链接」相邻行组。
+  # 文档名去空白全等、URL 须 http(s) 开头（明文或 link.url 百分号解码）才采纳；未命中行维持记忆/人工占位。默认关：关闭时零触碰网络。
+  enabled: false
+  doc_keywords:
+    - "原型"
+    - "手册"
+    - "链接"

@@ -157,6 +157,18 @@ class TestEnvConfig:
 
 
 @dataclass
+class DocIndexConfig:
+    """§1.3 手册/UI/原型链接接地：从知识库项目层链接汇总文档（如 Uniresearch原型、UI设计、用户手册链接）
+    逐字提取明文 URL 或超链接 href（raw_content 会丢链接，须读 blocks）。
+
+    enabled 默认 False：关闭时不检索、不读块、不填充，相应行维持记忆/人工占位。
+    doc_keywords：项目层文档标题关键词（命中任一即候选，复用 2.2 同一套检索）。
+    """
+    enabled: bool = False
+    doc_keywords: tuple = ("原型", "手册", "链接")
+
+
+@dataclass
 class Config:
     llm: LLMConfig = field(default_factory=LLMConfig)
     agent: AgentConfig = field(default_factory=AgentConfig)
@@ -169,6 +181,7 @@ class Config:
     memory: MemoryConfig = field(default_factory=MemoryConfig)
     scope: ScopeConfig = field(default_factory=ScopeConfig)
     test_env: TestEnvConfig = field(default_factory=TestEnvConfig)
+    doc_index: DocIndexConfig = field(default_factory=DocIndexConfig)
 
     @property
     def trace_dir(self) -> Path:
@@ -287,6 +300,10 @@ def load_config(settings_path: Path | str = SETTINGS_PATH, **overrides) -> Confi
         test_env=TestEnvConfig(
             enabled=str(_get(_get(raw, "test_env", {}), "enabled", False)).lower() in ("1", "true", "yes", "on"),
             doc_keywords=tuple(str(k) for k in _get(_get(raw, "test_env", {}), "doc_keywords", ("测试环境", "账号"))),
+        ),
+        doc_index=DocIndexConfig(
+            enabled=str(_get(_get(raw, "doc_index", {}), "enabled", False)).lower() in ("1", "true", "yes", "on"),
+            doc_keywords=tuple(str(k) for k in _get(_get(raw, "doc_index", {}), "doc_keywords", ("原型", "手册", "链接"))),
         ),
     )
 

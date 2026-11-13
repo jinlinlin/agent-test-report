@@ -233,7 +233,7 @@ def render_report(stats: StatsResult, charts: Optional[Dict[str, str]] = None,
         parts.append("> 模块清单可参照 4.1.1 缺陷分布自动列出；描述需人工或 V2 补齐。\n")
     parts.append("## 2.2 测试环境\n")
     if test_env and test_env.get("rows"):
-        # 知识库项目层环境文档接地：命中行逐字引用，未命中行仍占位，表后标注来源
+        # 知识库项目层环境文档接地：命中行逐字引用，未命中行仍占位，表后不加来源标注
         from .test_env import render_env_table
         parts.append(render_env_table(test_env["rows"], str(test_env.get("source_title") or "")) + "\n")
     else:

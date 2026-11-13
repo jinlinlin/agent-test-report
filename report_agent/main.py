@@ -168,6 +168,8 @@ def main(argv=None) -> int:
                         help="开启 V2-4 测试范围接地（覆盖 scope.enabled；从本版本目录下的测试用例 xlsx 自动提取 2.1 测试范围，提不出则回退占位）")
     parser.add_argument("--test-env", action="store_true", dest="test_env",
                         help="开启 2.2 测试环境接地（覆盖 test_env.enabled；从知识库项目层环境文档逐字提取地址/账号，未命中则回退占位）")
+    parser.add_argument("--doc-index", action="store_true", dest="doc_index",
+                        help="开启 §1.3 手册/UI/原型链接接地（覆盖 doc_index.enabled；从知识库项目层链接汇总文档逐字提取外链，未命中则维持记忆/人工占位）")
     args = parser.parse_args(argv)
 
     overrides = {}
@@ -191,6 +193,8 @@ def main(argv=None) -> int:
         overrides["scope.enabled"] = True
     if args.test_env:
         overrides["test_env.enabled"] = True
+    if args.doc_index:
+        overrides["doc_index.enabled"] = True
 
     if args.probe:
         return run_probe(args.user_input, **overrides)

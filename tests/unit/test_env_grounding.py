@@ -80,7 +80,7 @@ def test_render_table_verbatim_and_placeholder():
     md = render_env_table(rows, source_title="某环境文档")
     assert "| 测试环境 | http://x.cn | a/b |" in md
     assert "| 预发布环境 | 【待补充】 | 【待补充】 |" in md
-    assert "逐字引自知识库《某环境文档》" in md
+    assert "环境信息逐字引自" not in md  # 表后不加来源标注文字（用户拍板）
 
 
 # ---- 项目层候选收集（桩导航原语，不联网）----
@@ -177,7 +177,7 @@ def test_renderer_with_env_fills():
     env = {"rows": {"测试环境": {"url": "http://x.cn", "creds": "a/b"}}, "source_title": "TDoc"}
     md = render_report(_stats(), test_env=env)
     assert "| 测试环境 | http://x.cn | a/b |" in md
-    assert "逐字引自知识库《TDoc》" in md
+    assert "环境信息逐字引自" not in md  # 2.2 表后不追加来源标注
     assert "| 预发布环境 | 【待补充】 | 【待补充】 |" in md  # 未命中行给简洁占位
 
 

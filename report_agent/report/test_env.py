@@ -5,7 +5,7 @@
 正文即「环境名 / URL / 账号密码」三段式行组）。本模块把 2.2 从纯人工占位升级为
 「只抄不写」的接地填充：逐字引用原文，任一校验不过整体回退占位，绝不编造凭证。
 
-安全口径（用户 2026-11-13 拍板）：凭证逐字写入报告 2.2，来源文档标注在表后；
+安全口径（用户 2026-11-13 拍板）：凭证逐字写入报告 2.2，表后不另加来源标注文字；
 报告与源文档同处知识库权限体系，敏感度不升级。
 
 红线（对齐 find_doc_urls 逐层收窄不兜底不变量）：
@@ -54,7 +54,10 @@ def parse_env_rows(text: str) -> Dict[str, Dict[str, str]]:
 
 
 def render_env_table(rows: Dict[str, Dict[str, str]], source_title: str = "") -> str:
-    """按 ENV_ROW_NAMES 顺序渲染 2.2 表：命中行逐字填原文，未命中行保持【待补充】。"""
+    """按 ENV_ROW_NAMES 顺序渲染 2.2 表：命中行逐字填原文，未命中行保持【待补充】。
+
+    source_title 仅作调用侧溯源记录用，不写入报告正文（用户 2026-11-13 拍板：表后不加来源标注文字）。
+    """
     out = ["| 环境 | 测试地址 | 账号密码 |", "| --- | --- | --- |"]
     for name in ENV_ROW_NAMES:
         hit = rows.get(name)
@@ -62,10 +65,7 @@ def render_env_table(rows: Dict[str, Dict[str, str]], source_title: str = "") ->
             out.append(f"| {name} | {hit['url']} | {hit['creds']} |")
         else:
             out.append(f"| {name} | 【待补充】 | 【待补充】 |")
-    table = "\n".join(out)
-    if source_title:
-        table += f"\n\n> 环境信息逐字引自知识库《{source_title}》，如环境变更请更新该文档。"
-    return table
+    return "\n".join(out)
 
 
 def _is_candidate(node: Dict[str, Any], keywords: List[str]) -> bool:
