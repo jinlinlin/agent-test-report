@@ -27,7 +27,9 @@ def test_reference_table_fills_links_and_has_testcase_row():
     # 链接渲染为「文档名」超链接，而非裸 URL
     assert "[V5.0.0 测试大纲](https://x/wiki/A)" in md
     assert "[V5.0.0 测试用例.xlsx](https://x/wiki/B)" in md
-    assert "| 需求文档 | 【待补充】 |" in md  # 其余仍人工
+    assert "| 软件用户手册 | 【待补充】 |" in md  # 记忆/人工行未提供仍占位
+    # 需求文档已改走检索：未命中时给「未在对应版本目录找到」占位（与大纲/用例同口径）
+    assert "未在对应版本目录找到《需求文档》" in md
 
 
 def test_reference_table_accepts_plain_url_string():
@@ -40,6 +42,7 @@ def test_reference_table_missing_placeholder():
     md = T.reference_doc_table({})
     assert "未在对应版本目录找到《测试大纲》" in md
     assert "未在对应版本目录找到《测试用例》" in md
+    assert "未在对应版本目录找到《需求文档》" in md
 
 
 # ---- feishu_client：作用域与跨版本防护（桩替换导航原语，不联网）----

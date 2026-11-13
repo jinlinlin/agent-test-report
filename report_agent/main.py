@@ -163,7 +163,7 @@ def main(argv=None) -> int:
     parser.add_argument("--llm-intent-fallback", action="store_true", dest="llm_intent_fallback",
                         help="开启 V2-1 延伸 LLM 兜底意图翻译（覆盖 agent.llm_intent_fallback；仅在候选集内选择，需可用 LLM）")
     parser.add_argument("--doc-memory", action="store_true", dest="doc_memory",
-                        help="开启 V2-3 项目级参考文档链接记忆（覆盖 memory.doc_links_enabled；需求/手册/UI/原型 首次询问后按项目登记、后续同项目复用）")
+                        help="开启 V2-3 项目级参考文档链接记忆（覆盖 memory.doc_links_enabled；手册/UI/原型 首次询问后按项目登记、后续同项目复用）")
     args = parser.parse_args(argv)
 
     overrides = {}

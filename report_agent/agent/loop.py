@@ -375,7 +375,7 @@ class ReportAgent:
         return self._doc_store_obj
 
     def _resolve_project_doc_links(self, product_name: str, state: Optional[AgentState] = None) -> Dict[str, Dict[str, str]]:
-        """§1.3 需求/手册/UI/原型 这类「同项目每版本都一样」的链接：
+        """§1.3 手册/UI/原型 这类「同项目每版本都一样」的链接（需求文档已改走版本目录检索）：
         命中项目记忆直接复用；未命中且有交互入口则首次询问用户提供并登记（严格校验 URL）。
 
         开关 doc_links_enabled 关闭 / 无产品名一律返回 {}，渲染层保持占位，行为与现状逐字一致。

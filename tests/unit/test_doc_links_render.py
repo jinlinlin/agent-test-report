@@ -38,7 +38,7 @@ def _agent(cfg, ask=None):
 def test_reference_table_renders_memory_link_and_keeps_placeholder():
     md = T.reference_doc_table({"产品原型文档": {"title": "原型V5", "url": "https://x/wiki/P"}})
     assert "[原型V5](https://x/wiki/P)" in md
-    assert "| 需求文档 | 【待补充】 |" in md  # 未提供的行仍人工占位
+    assert "| 软件用户手册 | 【待补充】 |" in md  # 未提供的记忆行仍人工占位
 
 
 # ---- RenderReportTool 合并 ----
@@ -46,16 +46,18 @@ def test_reference_table_renders_memory_link_and_keeps_placeholder():
 def test_tool_merges_project_doc_links_into_report():
     tool = RenderReportTool(None)  # cfg=None → 跳过飞书检索，只走注入的项目记忆
     res = tool.run(stats_obj=StatsResult(), product_name="UniResearch", build="V5.0.0",
-                   project_doc_links={"需求文档": {"title": "需求X", "url": "https://x/wiki/REQ"}})
+                   project_doc_links={"软件用户手册": {"title": "手册X", "url": "https://x/wiki/MAN"}})
     assert res.ok
-    assert "[需求X](https://x/wiki/REQ)" in res.data
-    assert res.meta["ref_doc_links"]["需求文档"]["url"] == "https://x/wiki/REQ"
+    assert "[手册X](https://x/wiki/MAN)" in res.data
+    assert res.meta["ref_doc_links"]["软件用户手册"]["url"] == "https://x/wiki/MAN"
 
 
 def test_tool_backward_compatible_without_project_links():
     res = RenderReportTool(None).run(stats_obj=StatsResult(), product_name="UniResearch", build="V5.0.0")
     assert res.ok and res.meta["ref_doc_links"] == {}
-    assert "| 需求文档 | 【待补充】 |" in res.data  # 与现状逐字一致
+    assert "| 软件用户手册 | 【待补充】 |" in res.data
+    # 需求文档已改走检索组：无检索能力（cfg=None）时与大纲/用例同样给「未找到」占位
+    assert "未在对应版本目录找到《需求文档》" in res.data
 
 
 def test_tool_feishu_fact_overrides_memory_on_same_key(monkeypatch):
@@ -95,13 +97,13 @@ def test_reuses_registered_link_for_same_project(tmp_path):
 
 
 def test_no_cross_project_reuse(tmp_path):
-    DocLinkStore(tmp_path / "doc_links.json").register("UniResearch", "需求文档", "https://feishu.cn/wiki/U")
+    DocLinkStore(tmp_path / "doc_links.json").register("UniResearch", "软件用户手册", "https://feishu.cn/wiki/U")
     ag = _agent(_mem_cfg(tmp_path))
     assert ag._resolve_project_doc_links("一表通项目") == {}      # 新项目绝不借用他项目
 
 
 def test_first_time_ask_registers_and_persists(tmp_path):
-    answers = {"需求文档": "https://feishu.cn/wiki/REQ", "产品原型文档": "https://feishu.cn/wiki/PROTO"}
+    answers = {"软件用户手册": "https://feishu.cn/wiki/MAN", "产品原型文档": "https://feishu.cn/wiki/PROTO"}
 
     def ask(q, opts):
         for k, v in answers.items():
@@ -111,11 +113,12 @@ def test_first_time_ask_registers_and_persists(tmp_path):
 
     ag = _agent(_mem_cfg(tmp_path), ask=ask)
     out = ag._resolve_project_doc_links("UniResearch")
-    assert out["需求文档"]["url"] == "https://feishu.cn/wiki/REQ"
+    assert out["软件用户手册"]["url"] == "https://feishu.cn/wiki/MAN"
     assert out["产品原型文档"]["url"] == "https://feishu.cn/wiki/PROTO"
-    assert "软件用户手册" not in out                             # 空答复不入库
+    assert "UI 设计文档" not in out                              # 空答复不入库
+    assert "需求文档" not in out                                 # 需求文档已改走检索，不再询问
     # 落盘可复用：新实例不再询问也能命中
-    assert DocLinkStore(tmp_path / "doc_links.json").lookup("UniResearch", "需求文档")["url"] == "https://feishu.cn/wiki/REQ"
+    assert DocLinkStore(tmp_path / "doc_links.json").lookup("UniResearch", "软件用户手册")["url"] == "https://feishu.cn/wiki/MAN"
 
 
 def test_invalid_answer_not_registered(tmp_path):

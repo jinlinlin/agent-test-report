@@ -120,7 +120,7 @@ class ChartsConfig:
 
 @dataclass
 class MemoryConfig:
-    """项目级长期记忆（V2-3）：跨版本复用「同一项目恒定」的参考文档链接（需求/手册/UI/原型）。
+    """项目级长期记忆（V2-3）：跨版本复用「同一项目恒定」的参考文档链接（手册/UI/原型；需求文档走检索）。
 
     doc_links_enabled 默认 False：关闭时不读写小抄，§1.3 行为与现状逐字一致。
     """

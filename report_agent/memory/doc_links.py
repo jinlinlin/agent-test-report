@@ -1,7 +1,8 @@
 """项目级参考文档链接记忆（V2-3 第 1 步：只做存/取，不碰渲染）。
 
-背景：需求文档 / 软件用户手册 / UI 设计文档 / 产品原型文档 这类参考文档链接，
+背景：软件用户手册 / UI 设计文档 / 产品原型文档 这类参考文档链接，
 同一项目的每个版本都一样，但飞书「项目+版本」目录里不一定能自动定位到。
+（需求文档不在此列：与测试大纲/用例同走版本目录检索，见 templates.REF_DOC_LINK_TITLES。）
 本模块提供一个本地 JSON 小抄：某项目某类型的链接一旦被确认提供，就按「项目」登记，
 之后同项目直接复用；新项目 / 新类型没有记录则返回空，由上层决定是否首次询问用户。
 
@@ -21,8 +22,8 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 from urllib.parse import urlparse
 
-# 参考文档中「同一项目每版本都一样、适合按项目记忆」的类型（与 templates.REFERENCE_DOC_ROWS 的人工行对齐）。
-PROJECT_DOC_TYPES = ("需求文档", "软件用户手册", "UI 设计文档", "产品原型文档")
+# 参考文档中「同一项目每版本都一样、适合按项目记忆」的类型（需求文档已改走检索，不属记忆组）。
+PROJECT_DOC_TYPES = ("软件用户手册", "UI 设计文档", "产品原型文档")
 
 
 def _norm_project(product: str) -> str:

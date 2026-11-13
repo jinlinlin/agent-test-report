@@ -28,7 +28,7 @@ class RenderReportTool(Tool):
         if stats_obj is None:
             return ToolResult(ok=False, error="缺少统计结果，无法渲染报告")
         charts = self._render_charts(stats_obj)
-        # 飞书实检（大纲/用例）为事实优先，项目记忆（需求/手册/UI/原型）补充；同键时实检覆盖记忆
+        # 飞书实检（需求/大纲/用例）为事实优先，项目记忆（手册/UI/原型）补充；同键时实检覆盖记忆
         ref_links = {**(project_doc_links or {}), **self._resolve_ref_links(product_name, build)}
         embed = self._defect_embed_mode(stats_obj)
         markdown = render_report(stats_obj, charts=charts, ref_links=ref_links,
