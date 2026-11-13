@@ -26,7 +26,7 @@ def test_v1_001_normal():
     assert state.stats is not None
     # 报告章节完整
     md = state.report_markdown
-    for sec in ["## 1. 引言", "## 2. 测试概要", "## 3. 执行结果", "## 4. 功能测试", "## 5. 测试结论", "## 6. 缺陷清单"]:
+    for sec in ["# 1. 引言", "# 2. 测试概要", "# 3. 执行结果", "# 4. 功能测试", "# 5. 测试结论", "# 6. 缺陷清单"]:
         assert sec in md
     # 统计数值与源数据一致（mock 24 条）
     assert state.stats["summary"]["total"] == 24

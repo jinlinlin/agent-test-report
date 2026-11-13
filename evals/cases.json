@@ -84,7 +84,7 @@
       "expect": {
         "status": "failed",
         "no_stats": true,
-        "report_contains": "测试报告（生成失败"
+        "report_contains": "失败环节与原因"
       }
     }
   ]

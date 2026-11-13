@@ -41,8 +41,8 @@ def test_bug_to_fields_full_and_mapped():
 def test_section6_inline_when_no_url():
     stats = _stats([{"id": 1, "status": "active", "resolution": "", "module": "/A", "severity": 3}])
     md = render_report(stats)
-    assert "### 6.1 延期处理缺陷清单" in md
-    assert "### 6.2 激活（待解决）缺陷清单" in md
+    assert "## 6.1 延期处理缺陷清单" in md
+    assert "## 6.2 激活（待解决）缺陷清单" in md
 
 
 # ---- C 方案：文档内嵌多维表格块 ----
@@ -55,7 +55,7 @@ def test_section6_inline_note_no_link_no_wide_table():
     assert "已展开为下方多维表格" in md
     assert "遗留未解决 1 条" in md
     assert "[缺陷清单（多维表格）]" not in md   # 内嵌形态不放链接
-    assert "### 6.1" not in md                  # 也不放宽表
+    assert "## 6.1" not in md                  # 也不放宽表（章节标题已上调为一级，断言随新口径）
 
 
 class _EmbedFakeClient(FeishuClient):
