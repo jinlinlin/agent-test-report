@@ -146,6 +146,63 @@ class ReportAgent:
                 return c["name"]
         return ""
 
+    # ---- V2-1 FC 话术子项（仅原生 FC 模式启用）----
+    def _fc_clarify_active(self) -> bool:
+        """原生 FC 澄清子项开关：use_native_fc 且 LLM 可用才启用；否则话术/解析均走现有模板+规则（逐字不变）。"""
+        return bool(getattr(self.cfg.llm, "use_native_fc", False)
+                    and self.llm is not None and getattr(self.llm, "available", False))
+
+    def _fc_question(self, base_question: str, options: list) -> str:
+        """FC 模式下由模型组织澄清话术（候选选项仍由程序给定，模型只负责措辞）；非 FC/失败回退模板。"""
+        if not self._fc_clarify_active():
+            return base_question
+        prompt = (
+            f"需要向用户澄清，以便从以下候选中选出一个：{options}\n"
+            f"参考问法：{base_question}\n"
+            "请用一两句自然中文重新组织友好的询问话术，不要替用户选择、不要删改或编造候选。"
+        )
+        try:
+            q = (self.llm.complete(
+                prompt, system="你是测试报告 Agent 的澄清话术生成器，只负责措辞询问。") or "").strip()
+        except Exception:
+            return base_question
+        return q or base_question
+
+    def _fc_parse_answer(self, answer: str, options: list) -> str:
+        """FC 模式下由模型把用户对澄清的自然语言答复映射为候选集内的确定项；严格校验在集内，
+        越界/失败/None 返回空串交调用方回退规则解析（防幻觉，不编造）。"""
+        if not self._fc_clarify_active() or not options:
+            return ""
+        a = (answer or "").strip()
+        if not a:
+            return ""
+        prompt = (
+            f"用户对下列候选的答复是：{a}\n候选（仅能从中选一个）：{options}\n"
+            "若能确定用户指向的唯一候选，只输出该候选原文；不确定或无法对应则只输出 None。禁止编造候选之外的内容。"
+        )
+        try:
+            out = (self.llm.complete(
+                prompt, system="你是答复解析器，只能从给定候选中原样选择，禁止编造。") or "").strip()
+        except Exception:
+            return ""
+        if not out or out.lower() == "none":
+            return ""
+        ol = out.lower()
+        for o in options:
+            # 只接受精确命中或模型用整句包裹了候选（候选是输出子串）；
+            # 不接受「输出是候选子串」（残片会误命中，防幻觉）。
+            if o.lower() == ol or o.lower() in ol:
+                return o
+        return ""
+
+    def _log_clarify(self, state: AgentState, kind: str, question: str, options: list,
+                     answer: str, resolved: str) -> None:
+        """§10 澄清回合事件：候选集与用户答复写入现有 Trace（复用 tool_args/tool_result 字段，格式不变）。"""
+        self.tracer.log(step=0, type="clarify_round", thought=f"向用户澄清{kind}",
+                        tool_args={"question": question, "candidates": list(options)},
+                        tool_result={"answer": answer, "resolved": resolved},
+                        user_input=state.user_input, state_snapshot=state.snapshot())
+
     def _default_product_hint(self, products: list) -> str:
         """未给项目名时的兜底：zentao.default_product 需在已知项目内才可用（不编造未知项目）。"""
         dp = (self.cfg.zentao.default_product or "").strip()
@@ -267,10 +324,14 @@ class ReportAgent:
                 state.status = "clarify"
                 state.fail_reason = "澄清回合已达上限"
                 return state
-            ans = self.ask("未识别到项目名，请选择项目：", products)
+            base_q = "未识别到项目名，请选择项目："
+            q = self._fc_question(base_q, products)
+            ans = self.ask(q, products)
             rounds += 1
             state.clarify_count += 1
-            product = self._resolve_product(ans, products)
+            # FC 模式优先模型解析（严格校集内），空则回退规则（序号/包含）
+            product = self._fc_parse_answer(ans, products) or self._resolve_product(ans, products)
+            self._log_clarify(state, "项目", q, products, ans, product)
             if not product:
                 state.status = "clarify"
                 state.fail_reason = "项目仍无法识别"
@@ -291,11 +352,15 @@ class ReportAgent:
             state.status = "clarify"
             state.fail_reason = "版本仍有歧义，澄清回合已达上限"
             return state
-        ans = self.ask(f"{product} 下有多个版本，请选择（可答序号／版本名／最新的）：",
-                       [c["name"] for c in cands])
+        names = [c["name"] for c in cands]
+        base_q = f"{product} 下有多个版本，请选择（可答序号／版本名／最新的）："
+        q = self._fc_question(base_q, names)
+        ans = self.ask(q, names)
         rounds += 1
         state.clarify_count += 1
-        chosen = self._resolve_version(ans, cands)
+        # FC 模式优先模型解析（严格校集内），空则回退规则（序号/最新/包含）
+        chosen = self._fc_parse_answer(ans, names) or self._resolve_version(ans, cands)
+        self._log_clarify(state, "版本", q, names, ans, chosen)
         state.version_name = chosen or (extract_version_name(state.user_input) or product)
         return state
 
