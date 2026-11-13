@@ -69,8 +69,10 @@ def _terminal_ask(question: str, options) -> str:
 
 def run_once(user_input: str, **overrides) -> tuple[Path | None, Path | None, str, str | None]:
     cfg = load_config(**overrides)
-    # 开关开启时才接上终端 input()；关闭时传 None，行为与 V1 逐字一致。
-    agent, tracer = build_agent(cfg, ask=(_terminal_ask if cfg.agent.interactive_clarify else None))
+    # 开关开启时才接上终端 input()（V2-1 歧义澄清 或 V2-3 首次询问参考文档链接）；
+    # 两者均关时传 None，行为与 V1 逐字一致。
+    need_ask = cfg.agent.interactive_clarify or getattr(cfg.memory, "doc_links_enabled", False)
+    agent, tracer = build_agent(cfg, ask=(_terminal_ask if need_ask else None))
     state = agent.run(user_input)
 
     # 落盘报告
@@ -160,6 +162,8 @@ def main(argv=None) -> int:
                         help="开启 V2-1 模糊输入交互澄清（覆盖 agent.interactive_clarify；歧义时列候选并终端反问）")
     parser.add_argument("--llm-intent-fallback", action="store_true", dest="llm_intent_fallback",
                         help="开启 V2-1 延伸 LLM 兜底意图翻译（覆盖 agent.llm_intent_fallback；仅在候选集内选择，需可用 LLM）")
+    parser.add_argument("--doc-memory", action="store_true", dest="doc_memory",
+                        help="开启 V2-3 项目级参考文档链接记忆（覆盖 memory.doc_links_enabled；需求/手册/UI/原型 首次询问后按项目登记、后续同项目复用）")
     args = parser.parse_args(argv)
 
     overrides = {}
@@ -177,6 +181,8 @@ def main(argv=None) -> int:
         overrides["agent.interactive_clarify"] = True
     if args.llm_intent_fallback:
         overrides["agent.llm_intent_fallback"] = True
+    if args.doc_memory:
+        overrides["memory.doc_links_enabled"] = True
 
     if args.probe:
         return run_probe(args.user_input, **overrides)

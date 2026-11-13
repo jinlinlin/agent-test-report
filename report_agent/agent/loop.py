@@ -9,7 +9,7 @@
 """
 from __future__ import annotations
 
-from typing import Optional
+from typing import Dict, Optional
 
 from ..report.renderer import render_failure_report, render_step_limit_report
 from ..tools.base import ToolRegistry, ToolResult
@@ -32,6 +32,8 @@ class ReportAgent:
         # LLM 兜底翻译（llm_intent_fallback 开启才用）：规则不命中时把原始输入映射到程序给的候选集，
         # 模型只翻译不造事实；默认关时无 LLM 也能全链路跑通（离线可跑约束不变）。
         self.llm = llm
+        # V2-3 项目级参考文档链接记忆小抄（doc_links_enabled 开启才惰性创建；关闭时永不触碰文件）
+        self._doc_store_obj = None
 
     # ---- 对外入口 ----
     def run(self, user_input: str) -> AgentState:
@@ -364,6 +366,56 @@ class ReportAgent:
         state.version_name = chosen or (extract_version_name(state.user_input) or product)
         return state
 
+    # ---- V2-3 项目级参考文档链接记忆 ----
+    def _doc_store(self):
+        """惰性创建本地小抄实例：仅 doc_links_enabled 开启时才会被调用，关闭时不触碰文件。"""
+        if self._doc_store_obj is None:
+            from ..memory.doc_links import DocLinkStore
+            self._doc_store_obj = DocLinkStore(self.cfg.doc_links_path)
+        return self._doc_store_obj
+
+    def _resolve_project_doc_links(self, product_name: str, state: Optional[AgentState] = None) -> Dict[str, Dict[str, str]]:
+        """§1.3 需求/手册/UI/原型 这类「同项目每版本都一样」的链接：
+        命中项目记忆直接复用；未命中且有交互入口则首次询问用户提供并登记（严格校验 URL）。
+
+        开关 doc_links_enabled 关闭 / 无产品名一律返回 {}，渲染层保持占位，行为与现状逐字一致。
+        严格按项目隔离：只认传入的规范项目名（取自 version_info），新项目返回空→首次询问，绝不借用他项目。
+        """
+        if not getattr(self.cfg.memory, "doc_links_enabled", False) or not product_name:
+            return {}
+        from ..memory.doc_links import PROJECT_DOC_TYPES
+        store = self._doc_store()
+        out: Dict[str, Dict[str, str]] = {}
+        for dtype in PROJECT_DOC_TYPES:
+            hit = store.lookup(product_name, dtype)
+            if hit:
+                out[dtype] = hit
+                if state is not None:
+                    self.tracer.log(step=0, type="memory_reuse",
+                                    thought=f"参考文档《{dtype}》复用项目记忆（{product_name}）：{hit['url']}",
+                                    tool_result=dict(hit),
+                                    user_input=state.user_input, state_snapshot=state.snapshot())
+                continue
+            if self.ask is None:
+                continue  # 无交互入口：不猜不编，保持占位
+            q = f"请提供《{dtype}》文档链接（{product_name}，直接回车跳过）："
+            ans = (self.ask(q, []) or "").strip()
+            if not ans:
+                continue
+            if store.register(product_name, dtype, ans):
+                saved = store.lookup(product_name, dtype)
+                if saved:
+                    out[dtype] = saved
+                    if state is not None:
+                        self._log_clarify(state, f"参考文档《{dtype}》", q, [], ans, saved["url"])
+            elif state is not None:
+                # 非法 URL：不入库，下一轮仍会询问或保持占位（绝不把乱码当链接记住）
+                self.tracer.log(step=0, type="clarify_round",
+                                thought=f"参考文档《{dtype}》链接格式非法，未记入记忆",
+                                tool_args={"question": q}, tool_result={"answer": ans, "resolved": ""},
+                                user_input=state.user_input, state_snapshot=state.snapshot())
+        return out
+
     # ---- 工具执行 ----
     def _push_pending(self, state: AgentState) -> bool:
         """飞书已启用、报告已生成、且尚未推送成功/未失败 → 还需执行一步 push_feishu。"""
@@ -394,6 +446,8 @@ class ReportAgent:
             vi = state.version_info or {}
             kwargs["product_name"] = vi.get("product_name", "")
             kwargs["build"] = vi.get("build", "")
+            # V2-3：以报告权威产品名（version_info）为键查/登项目记忆（关闭时返回 {}，行为不变）
+            kwargs["project_doc_links"] = self._resolve_project_doc_links(vi.get("product_name", ""), state)
         elif action.tool == "push_feishu":
             kwargs["report_markdown"] = state.report_markdown
             kwargs["version_name"] = state.version_name or ""

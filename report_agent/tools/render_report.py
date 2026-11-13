@@ -24,11 +24,12 @@ class RenderReportTool(Tool):
     def __init__(self, cfg=None) -> None:
         self.cfg = cfg  # 未注入 cfg 时不产图、不检索飞书链接，行为与纯 Markdown 渲染一致（兼容旧调用）
 
-    def run(self, stats_obj=None, product_name: str = "", build: str = "", **kwargs) -> ToolResult:
+    def run(self, stats_obj=None, product_name: str = "", build: str = "", project_doc_links=None, **kwargs) -> ToolResult:
         if stats_obj is None:
             return ToolResult(ok=False, error="缺少统计结果，无法渲染报告")
         charts = self._render_charts(stats_obj)
-        ref_links = self._resolve_ref_links(product_name, build)
+        # 飞书实检（大纲/用例）为事实优先，项目记忆（需求/手册/UI/原型）补充；同键时实检覆盖记忆
+        ref_links = {**(project_doc_links or {}), **self._resolve_ref_links(product_name, build)}
         embed = self._defect_embed_mode(stats_obj)
         markdown = render_report(stats_obj, charts=charts, ref_links=ref_links,
                                  defect_bitable_inline=embed)

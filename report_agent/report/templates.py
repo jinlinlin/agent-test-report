@@ -40,23 +40,25 @@ REF_DOC_LINK_TITLES = ("测试大纲", "测试用例")
 
 
 def reference_doc_table(ref_links: Optional[Dict[str, Any]] = None) -> str:
-    """§1.3 参考文档表：测试大纲/测试用例行填入自动检索到的链接（渲染为「文档名」超链接），其余及未命中行留人工占位。
+    """§1.3 参考文档表：任意文档行只要 ref_links 里带了链接就渲染为「文档名」超链接。
 
+    - 测试大纲/测试用例：飞书自动检索命中则填；未命中给「未在对应版本目录找到」占位；
+    - 需求文档/手册/UI/原型：可由 V2-3 项目记忆填入；未提供则保留【待补充】人工占位。
     ref_links 值可为 {"title": 文档名, "url": 链接}，也兼容直接给 url 字符串（此时链接文字用行名）。
+    无 ref_links 时行为与旧版逐字一致。
     """
     ref_links = ref_links or {}
     rows = ["| 文档（版本/日期） | 文档链接/附件 |", "| --- | --- |"]
     for name in REFERENCE_DOC_ROWS:
-        if name in REF_DOC_LINK_TITLES:
-            entry = ref_links.get(name) or {}
-            if isinstance(entry, str):
-                entry = {"url": entry, "title": name}
-            url = str(entry.get("url") or "").strip()
-            if url:
-                text = str(entry.get("title") or name).strip() or name
-                cell = f"[{text}]({url})"
-            else:
-                cell = f"【待补充：未在对应版本目录找到《{name}》】"
+        entry = ref_links.get(name) or {}
+        if isinstance(entry, str):
+            entry = {"url": entry, "title": name}
+        url = str(entry.get("url") or "").strip()
+        if url:
+            text = str(entry.get("title") or name).strip() or name
+            cell = f"[{text}]({url})"
+        elif name in REF_DOC_LINK_TITLES:
+            cell = f"【待补充：未在对应版本目录找到《{name}》】"
         else:
             cell = "【待补充】"
         rows.append(f"| {name} | {cell} |")

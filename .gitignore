@@ -10,6 +10,10 @@ docs/验收证据/
 output/
 traces/
 
+# V2-3 项目级长期记忆小抄（运行积累的数据，非代码，不入库；可人工编辑/删除）
+# 只锁仓库根的 memory/ 数据目录；不能写 memory/（否则会连代码目录 report_agent/memory/ 一起忽略）
+/memory/
+
 # Python
 __pycache__/
 *.py[cod]

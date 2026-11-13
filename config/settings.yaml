@@ -92,3 +92,11 @@ charts:
   # 报告内以相对路径引用；单图失败或 enabled: false 时回退【图表占位】文字，不阻断报告。
   enabled: true
   dpi: 150
+
+memory:
+  # V2-3 项目级长期记忆：§1.3 参考文档中需求/手册/UI/原型这类「同一项目每版本都一样」的链接，
+  # 首次由用户提供后按项目登记到本地小抄，之后同项目复用（严格按项目隔离，新项目仍首次询问）。
+  # 默认关：关闭时不读写小抄，§1.3 行为与现状逐字一致。小抄文件走 .gitignore，不入库。
+  doc_links_enabled: false
+  dir: "memory"
+  doc_links_file: "doc_links.json"

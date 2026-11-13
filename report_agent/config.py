@@ -119,6 +119,17 @@ class ChartsConfig:
 
 
 @dataclass
+class MemoryConfig:
+    """项目级长期记忆（V2-3）：跨版本复用「同一项目恒定」的参考文档链接（需求/手册/UI/原型）。
+
+    doc_links_enabled 默认 False：关闭时不读写小抄，§1.3 行为与现状逐字一致。
+    """
+    doc_links_enabled: bool = False
+    dir: str = "memory"
+    doc_links_file: str = "doc_links.json"
+
+
+@dataclass
 class Config:
     llm: LLMConfig = field(default_factory=LLMConfig)
     agent: AgentConfig = field(default_factory=AgentConfig)
@@ -128,10 +139,15 @@ class Config:
     trace: TraceConfig = field(default_factory=TraceConfig)
     report: ReportConfig = field(default_factory=ReportConfig)
     charts: ChartsConfig = field(default_factory=ChartsConfig)
+    memory: MemoryConfig = field(default_factory=MemoryConfig)
 
     @property
     def trace_dir(self) -> Path:
         return REPO_ROOT / self.trace.dir
+
+    @property
+    def doc_links_path(self) -> Path:
+        return REPO_ROOT / self.memory.dir / self.memory.doc_links_file
 
     @property
     def report_dir(self) -> Path:
@@ -226,6 +242,11 @@ def load_config(settings_path: Path | str = SETTINGS_PATH, **overrides) -> Confi
         charts=ChartsConfig(
             enabled=_get(_get(raw, "charts", {}), "enabled", True),
             dpi=_get(_get(raw, "charts", {}), "dpi", 150),
+        ),
+        memory=MemoryConfig(
+            doc_links_enabled=str(_get(_get(raw, "memory", {}), "doc_links_enabled", False)).lower() in ("1", "true", "yes", "on"),
+            dir=_get(_get(raw, "memory", {}), "dir", "memory"),
+            doc_links_file=_get(_get(raw, "memory", {}), "doc_links_file", "doc_links.json"),
         ),
     )
 
