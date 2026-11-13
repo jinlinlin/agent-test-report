@@ -149,6 +149,27 @@ class FeishuClient:
         payload = self._check(resp, "/drive/v1/files/upload_all")
         return payload.get("data", {}).get("file_token", "")
 
+    def download_file(self, file_token: str) -> bytes:
+        """下载云空间/知识库中一个文件节点的原始字节（GET /drive/v1/files/{file_token}/download）。
+
+        用于读取以 `obj_type=file` 上传的附件（如测试用例 .xlsx）。无 token 返回空字节；
+        404/非 2xx 抛 FeishuError 由上层回退。**只读**，不修改任何文件。
+        """
+        if not file_token:
+            return b""
+        requests = _requests()
+        path = f"/drive/v1/files/{file_token}/download"
+        try:
+            resp = requests.get(self._url(path), headers=self._auth_header(), timeout=60)
+        except requests.exceptions.RequestException as exc:
+            raise FeishuError(f"飞书下载失败：{exc}", "error") from exc
+        if resp.status_code == 404:
+            raise FeishuError(f"飞书文件不存在（404）：{path}", "not_found")
+        if resp.status_code not in (200, 206):
+            # 非二进制成功响应（如权限不足返回 JSON 错误体）统一按错误抛出
+            raise FeishuError(f"飞书下载失败 HTTP {resp.status_code}：{resp.text[:200]}", "error")
+        return resp.content
+
     def create_import_task(self, file_token: str, name: str, folder_token: str, file_extension: str = "md") -> str:
         """发起导入任务（file_extension=md/docx → 云 docx），返回 ticket。"""
         body = {
@@ -455,8 +476,12 @@ class FeishuClient:
         return out
 
     @staticmethod
-    def _match_child_node(nodes: List[Dict[str, Any]], title: str) -> Dict[str, Any]:
-        """在节点列表中找标题**包含**目标名的文档节点，返回该节点 dict（无则空 dict）。"""
+    def _match_child_node(nodes: List[Dict[str, Any]], title: str, obj_type: str = "") -> Dict[str, Any]:
+        """在节点列表中找标题**包含**目标名的文档节点，返回该节点 dict（无则空 dict）。
+
+        obj_type 非空时仅匹配该类型节点（如 `file`）：下载用例表场景须精确锁定上传的 xlsx 附件，
+        跳过同目录下思维导图 mindnote / docx 等同名异类型节点。
+        """
         def _n(s: str) -> str:
             s = str(s or "").lower()
             for ch in "“”\"'  \t\u3000《》":
@@ -467,6 +492,29 @@ class FeishuClient:
         if not needle:
             return {}
         for node in nodes:
+            if obj_type and str(node.get("obj_type", "")) != obj_type:
+                continue
             if needle in _n(node.get("title", "")):
                 return node
         return {}
+
+    # ---- 版本目录节点定位（只读，供 V2-4 测试范围接地下载用例表）----
+    def find_doc_obj_token(self, product_name: str, build: str, title: str, obj_type: str = "") -> str:
+        """在「项目+版本」目录下按标题定位节点，返回其 obj_token。
+
+        obj_type 控制只匹配哪类节点（如 `file` 精确锁定上传的用例 xlsx，避免误抓同名 docx/mindnote）；
+        传空串则不限类型。沿用 find_doc_urls 的严格作用域以防跨项目/跨版本张冠李戴：
+        产品名→同名产品子节点（模糊包含）→版本号→**精确同名**版本目录（只找不建）→标题包含；
+        任一环节缺失即返回空，**绝不退而搜父层/其他版本**。
+        """
+        f = self.f
+        if not (product_name and build and f.wiki_space_id and f.wiki_projects_parent):
+            return ""
+        project_node = self.find_child_by_title(f.wiki_space_id, f.wiki_projects_parent, product_name)
+        if not project_node:
+            return ""
+        version_node = self.find_child_node(f.wiki_space_id, project_node, build)
+        if not version_node:  # 未找到该版本目录→不向下猜
+            return ""
+        node = self._match_child_node(self.list_nodes(f.wiki_space_id, version_node), title, obj_type=obj_type)
+        return str(node.get("obj_token", "") or "")

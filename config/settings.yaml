@@ -101,3 +101,15 @@ memory:
   doc_links_enabled: false
   dir: "memory"
   doc_links_file: "doc_links.json"
+
+scope:
+  # V2-4 测试范围接地：从本版本目录下的测试用例 xlsx（obj_type=file，drive 下载+解析）自动提取 2.1 测试范围。
+  # 模块=菜单目录（一级），描述=该菜单测到的功能点（二级/用例名）；提不出则整体回退【待补充】占位。
+  # 默认关：关闭时不下载/不解析、不填充，2.1 行为与 V1 逐字一致。用 --scope-grounding 临时开启。
+  enabled: false
+  # 测试用例表定位与解析：case_doc_title=版本目录下用例文件标题关键词；module_col/name_col=模块列/用名列表头；
+  # group_level：top=按一级菜单聚合（默认）/ full=按完整路径。
+  case_doc_title: "测试用例"
+  module_col: "模块分类"
+  name_col: "用例名称"
+  group_level: "top"

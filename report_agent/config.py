@@ -130,6 +130,21 @@ class MemoryConfig:
 
 
 @dataclass
+class ScopeConfig:
+    """测试范围接地填充（V2-4）：从本版本目录下的测试用例 xlsx 自动提取 2.1 测试范围。
+
+    enabled 默认 False：关闭时不下载/不解析、不填充，2.1 行为与 V1 占位逐字一致。
+    case_doc_title：版本目录下测试用例文件的标题关键词（obj_type=file）；module_col/name_col：用例表模块列/用名列表头；
+    group_level：top=按一级模块聚合（默认）/ full=按完整路径。
+    """
+    enabled: bool = False
+    case_doc_title: str = "测试用例"
+    module_col: str = "模块分类"
+    name_col: str = "用例名称"
+    group_level: str = "top"
+
+
+@dataclass
 class Config:
     llm: LLMConfig = field(default_factory=LLMConfig)
     agent: AgentConfig = field(default_factory=AgentConfig)
@@ -140,6 +155,7 @@ class Config:
     report: ReportConfig = field(default_factory=ReportConfig)
     charts: ChartsConfig = field(default_factory=ChartsConfig)
     memory: MemoryConfig = field(default_factory=MemoryConfig)
+    scope: ScopeConfig = field(default_factory=ScopeConfig)
 
     @property
     def trace_dir(self) -> Path:
@@ -247,6 +263,13 @@ def load_config(settings_path: Path | str = SETTINGS_PATH, **overrides) -> Confi
             doc_links_enabled=str(_get(_get(raw, "memory", {}), "doc_links_enabled", False)).lower() in ("1", "true", "yes", "on"),
             dir=_get(_get(raw, "memory", {}), "dir", "memory"),
             doc_links_file=_get(_get(raw, "memory", {}), "doc_links_file", "doc_links.json"),
+        ),
+        scope=ScopeConfig(
+            enabled=str(_get(_get(raw, "scope", {}), "enabled", False)).lower() in ("1", "true", "yes", "on"),
+            case_doc_title=_get(_get(raw, "scope", {}), "case_doc_title", "测试用例"),
+            module_col=_get(_get(raw, "scope", {}), "module_col", "模块分类"),
+            name_col=_get(_get(raw, "scope", {}), "name_col", "用例名称"),
+            group_level=_get(_get(raw, "scope", {}), "group_level", "top"),
         ),
     )
 

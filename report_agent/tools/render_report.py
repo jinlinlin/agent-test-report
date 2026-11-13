@@ -30,11 +30,13 @@ class RenderReportTool(Tool):
         charts = self._render_charts(stats_obj)
         # 飞书实检（需求/大纲/用例）为事实优先，项目记忆（手册/UI/原型）补充；同键时实检覆盖记忆
         ref_links = {**(project_doc_links or {}), **self._resolve_ref_links(product_name, build)}
+        test_scope = self._resolve_test_scope(product_name, build)
         embed = self._defect_embed_mode(stats_obj)
         markdown = render_report(stats_obj, charts=charts, ref_links=ref_links,
-                                 defect_bitable_inline=embed)
+                                 defect_bitable_inline=embed, test_scope=test_scope)
         return ToolResult(ok=True, data=markdown,
-                          meta={"ref_doc_links": ref_links, "defect_bitable_embed": embed})
+                          meta={"ref_doc_links": ref_links, "defect_bitable_embed": embed,
+                                "test_scope_filled": bool(test_scope)})
 
     def _defect_embed_mode(self, stats_obj) -> bool:
         """第 6 节是否走 C（文档内嵌多维表格）：飞书启用 + 开 defect_bitable + 开 defect_bitable_embed + 有缺陷行。
@@ -64,6 +66,41 @@ class RenderReportTool(Tool):
             return FeishuClient(f).find_doc_urls(product_name, build, list(T.REF_DOC_LINK_TITLES))
         except Exception:
             return {}
+
+    def _resolve_test_scope(self, product_name: str, build: str):
+        """V2-4 测试范围接地：仅当 scope.enabled + 飞书配齐时，从本版本目录下的测试用例 xlsx 提取 2.1 范围。
+
+        数据源：测试用例 xlsx（obj_type=file，drive 下载+解析「模块分类/用例名称」）——结构化、含计划内
+        零缺陷模块，且文件严格限定在本项目+版本目录，本身已接地。任何异常/提不出均返回 None → 回退占位；
+        关闭时零触碰，行为与 V1 逐字一致。
+        """
+        cfg = self.cfg
+        if cfg is None:
+            return None
+        scope_cfg = getattr(cfg, "scope", None)
+        if scope_cfg is None or not getattr(scope_cfg, "enabled", False):
+            return None
+        f = cfg.feishu
+        if not (f.enabled and product_name and build and f.app_id and f.app_secret
+                and f.wiki_space_id and f.wiki_projects_parent):
+            return None
+        return self._scope_from_cases(FeishuClient(f), product_name, build, scope_cfg)
+
+    def _scope_from_cases(self, client, product_name: str, build: str, scope_cfg):
+        """定位并下载本版本目录下的测试用例 xlsx，解析模块列聚合为范围；任一环节失败返回 None（回退占位）。"""
+        try:
+            from ..report.cases import extract_scope_from_cases
+
+            token = client.find_doc_obj_token(product_name, build,
+                                              getattr(scope_cfg, "case_doc_title", "测试用例"), obj_type="file")
+            if not token:
+                return None
+            content = client.download_file(token)
+            return extract_scope_from_cases(content, module_col=getattr(scope_cfg, "module_col", "模块分类"),
+                                            name_col=getattr(scope_cfg, "name_col", "用例名称"),
+                                            group_level=getattr(scope_cfg, "group_level", "top"))
+        except Exception:
+            return None
 
     def _render_charts(self, stats_obj):
         """返回 {图key: 相对报告文件(output/) 的 posix 路径}；未启用/失败一律 None → 占位回退。"""

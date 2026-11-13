@@ -35,7 +35,7 @@ LEVEL_DEFINITION = """| 缺陷等级 | 缺陷性质 | 系统中对应的错误�
 
 # 参考文档行清单（需求文档/测试大纲/测试用例走飞书版本目录检索；手册/UI/原型由项目记忆或人工提供）。
 REFERENCE_DOC_ROWS = ("需求文档", "软件用户手册", "UI 设计文档", "产品原型文档", "测试大纲", "测试用例")
-# 可在飞书“项目+版本”目录下按标题检索并自动贴链接的文档名（同时用作检索关键词）。
+# 可在飞书「项目+版本」目录下按标题检索并自动贴链接的文档名（同时用作检索关键词）。
 REF_DOC_LINK_TITLES = ("测试大纲", "测试用例", "需求文档")
 
 
@@ -69,6 +69,19 @@ TEST_SCOPE_TABLE = (
     "| --- | --- |\n"
     "| 【待补充，可参照 4.1.1 模块分布】 | 【待补充】 |"
 )
+
+
+def scope_table(rows) -> str:
+    """2.1 测试范围表：V2-4 从飞书文档正文接地提取到可信条目时渲染真实范围；
+
+    rows 为 [{"module","desc"}, ...]（模块名逐字来自原文）。空/None 由调用方回退 TEST_SCOPE_TABLE 占位。
+    """
+    out = ["| 模块 | 描述 |", "| --- | --- |"]
+    for r in rows or []:
+        module = str(r.get("module", "")).strip() or "【待补充】"
+        desc = str(r.get("desc", "")).strip() or "—"
+        out.append(f"| {module} | {desc} |")
+    return "\n".join(out)
 
 TEST_ENV_TABLE = (
     "| 环境 | 测试地址 | 账号密码 |\n"

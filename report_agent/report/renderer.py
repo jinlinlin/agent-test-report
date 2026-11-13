@@ -202,7 +202,8 @@ def bug_to_fields(row: BugRow, seq: int) -> Dict[str, Any]:
 
 def render_report(stats: StatsResult, charts: Optional[Dict[str, str]] = None,
                   ref_links: Optional[Dict[str, str]] = None,
-                  defect_bitable_inline: bool = False) -> str:
+                  defect_bitable_inline: bool = False,
+                  test_scope: Optional[List[Dict[str, str]]] = None) -> str:
     s = stats.summary
     v = stats.version
     c = stats.conclusion
@@ -223,8 +224,12 @@ def render_report(stats: StatsResult, charts: Optional[Dict[str, str]] = None,
     # 2. 测试概要
     parts.append("# 2. 测试概要\n")
     parts.append("## 2.1 测试范围\n")
-    parts.append(T.TEST_SCOPE_TABLE + "\n")
-    parts.append("> 模块清单可参照 4.1.1 缺陷分布自动列出；描述需人工或 V2 补齐。\n")
+    if test_scope:
+        # V2-4：从本版本目录下的测试用例 xlsx 接地提取的范围（模块=菜单目录，描述=功能点）
+        parts.append(T.scope_table(test_scope) + "\n")
+    else:
+        parts.append(T.TEST_SCOPE_TABLE + "\n")
+        parts.append("> 模块清单可参照 4.1.1 缺陷分布自动列出；描述需人工或 V2 补齐。\n")
     parts.append("## 2.2 测试环境\n")
     parts.append(T.TEST_ENV_TABLE + "\n")
     parts.append("## 2.3 测试方法以及标准\n")
