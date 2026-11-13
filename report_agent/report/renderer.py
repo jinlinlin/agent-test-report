@@ -203,7 +203,8 @@ def bug_to_fields(row: BugRow, seq: int) -> Dict[str, Any]:
 def render_report(stats: StatsResult, charts: Optional[Dict[str, str]] = None,
                   ref_links: Optional[Dict[str, str]] = None,
                   defect_bitable_inline: bool = False,
-                  test_scope: Optional[List[Dict[str, str]]] = None) -> str:
+                  test_scope: Optional[List[Dict[str, str]]] = None,
+                  test_env: Optional[Dict[str, object]] = None) -> str:
     s = stats.summary
     v = stats.version
     c = stats.conclusion
@@ -231,7 +232,12 @@ def render_report(stats: StatsResult, charts: Optional[Dict[str, str]] = None,
         parts.append(T.TEST_SCOPE_TABLE + "\n")
         parts.append("> 模块清单可参照 4.1.1 缺陷分布自动列出；描述需人工或 V2 补齐。\n")
     parts.append("## 2.2 测试环境\n")
-    parts.append(T.TEST_ENV_TABLE + "\n")
+    if test_env and test_env.get("rows"):
+        # 知识库项目层环境文档接地：命中行逐字引用，未命中行仍占位，表后标注来源
+        from .test_env import render_env_table
+        parts.append(render_env_table(test_env["rows"], str(test_env.get("source_title") or "")) + "\n")
+    else:
+        parts.append(T.TEST_ENV_TABLE + "\n")
     parts.append("## 2.3 测试方法以及标准\n")
     parts.append("### 2.3.1 测试方法\n")
     parts.append(T.TEST_METHOD + "\n")

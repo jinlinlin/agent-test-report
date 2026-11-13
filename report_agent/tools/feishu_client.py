@@ -518,3 +518,19 @@ class FeishuClient:
             return ""
         node = self._match_child_node(self.list_nodes(f.wiki_space_id, version_node), title, obj_type=obj_type)
         return str(node.get("obj_token", "") or "")
+
+    # ---- docx 正文只读（供 2.2 测试环境接地；任何失败降级空串，绝不阻断报告）----
+    def read_doc_raw_content(self, doc_id: str) -> str:
+        """读新版文档纯文本正文（GET /docx/v1/documents/{doc_id}/raw_content，需 docx:document）。
+
+        只读不写；doc_id 为空、接口失败/无权限/超时一律返回空串（上层回退占位），
+        绝不抛断主链路。返回的正文属外部来源文本，使用前须逐字校验形态后才入报告。
+        """
+        doc_id = str(doc_id or "").strip()
+        if not doc_id:
+            return ""
+        try:
+            payload = self._get(f"/docx/v1/documents/{doc_id}/raw_content")
+        except FeishuError:
+            return ""
+        return str(payload.get("data", {}).get("content", "") or "")

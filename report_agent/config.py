@@ -145,6 +145,18 @@ class ScopeConfig:
 
 
 @dataclass
+class TestEnvConfig:
+    """2.2 测试环境接地：从知识库项目层环境文档（标题含关键词的 docx）逐字提取地址/账号。
+
+    enabled 默认 False：关闭时不检索、不读正文、不填充，2.2 行为与现状逐字一致。
+    doc_keywords：项目层文档标题关键词（命中任一即候选，深度 ≤2、跳过版本目录）。
+    凭证逐字入报告经用户 2026-11-13 拍板（报告与源文档同处知识库权限体系）。
+    """
+    enabled: bool = False
+    doc_keywords: tuple = ("测试环境", "账号")
+
+
+@dataclass
 class Config:
     llm: LLMConfig = field(default_factory=LLMConfig)
     agent: AgentConfig = field(default_factory=AgentConfig)
@@ -156,6 +168,7 @@ class Config:
     charts: ChartsConfig = field(default_factory=ChartsConfig)
     memory: MemoryConfig = field(default_factory=MemoryConfig)
     scope: ScopeConfig = field(default_factory=ScopeConfig)
+    test_env: TestEnvConfig = field(default_factory=TestEnvConfig)
 
     @property
     def trace_dir(self) -> Path:
@@ -270,6 +283,10 @@ def load_config(settings_path: Path | str = SETTINGS_PATH, **overrides) -> Confi
             module_col=_get(_get(raw, "scope", {}), "module_col", "模块分类"),
             name_col=_get(_get(raw, "scope", {}), "name_col", "用例名称"),
             group_level=_get(_get(raw, "scope", {}), "group_level", "top"),
+        ),
+        test_env=TestEnvConfig(
+            enabled=str(_get(_get(raw, "test_env", {}), "enabled", False)).lower() in ("1", "true", "yes", "on"),
+            doc_keywords=tuple(str(k) for k in _get(_get(raw, "test_env", {}), "doc_keywords", ("测试环境", "账号"))),
         ),
     )
 

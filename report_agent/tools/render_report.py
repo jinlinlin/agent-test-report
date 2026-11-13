@@ -31,12 +31,14 @@ class RenderReportTool(Tool):
         # 飞书实检（需求/大纲/用例）为事实优先，项目记忆（手册/UI/原型）补充；同键时实检覆盖记忆
         ref_links = {**(project_doc_links or {}), **self._resolve_ref_links(product_name, build)}
         test_scope = self._resolve_test_scope(product_name, build)
+        test_env = self._resolve_test_env(product_name)
         embed = self._defect_embed_mode(stats_obj)
         markdown = render_report(stats_obj, charts=charts, ref_links=ref_links,
-                                 defect_bitable_inline=embed, test_scope=test_scope)
+                                 defect_bitable_inline=embed, test_scope=test_scope, test_env=test_env)
         return ToolResult(ok=True, data=markdown,
                           meta={"ref_doc_links": ref_links, "defect_bitable_embed": embed,
-                                "test_scope_filled": bool(test_scope)})
+                                "test_scope_filled": bool(test_scope),
+                                "test_env_filled": bool(test_env and test_env.get("rows"))})
 
     def _defect_embed_mode(self, stats_obj) -> bool:
         """第 6 节是否走 C（文档内嵌多维表格）：飞书启用 + 开 defect_bitable + 开 defect_bitable_embed + 有缺陷行。
@@ -99,6 +101,28 @@ class RenderReportTool(Tool):
             return extract_scope_from_cases(content, module_col=getattr(scope_cfg, "module_col", "模块分类"),
                                             name_col=getattr(scope_cfg, "name_col", "用例名称"),
                                             group_level=getattr(scope_cfg, "group_level", "top"))
+        except Exception:
+            return None
+
+    def _resolve_test_env(self, product_name: str):
+        """2.2 测试环境接地：仅当 test_env.enabled + 飞书配齐时，从项目层环境文档逐字提取地址/账号。
+
+        数据源：知识库项目目录下标题含关键词（默认 测试环境/账号）的 docx，深度 ≤2、跳过版本目录。
+        任何异常/未命中返回 None → 2.2 保持人工占位；关闭时零触碰网络，行为与现状逐字一致。
+        """
+        cfg = self.cfg
+        if cfg is None:
+            return None
+        env_cfg = getattr(cfg, "test_env", None)
+        if env_cfg is None or not getattr(env_cfg, "enabled", False):
+            return None
+        f = cfg.feishu
+        if not (f.enabled and product_name and f.app_id and f.app_secret
+                and f.wiki_space_id and f.wiki_projects_parent):
+            return None
+        try:
+            from ..report.test_env import resolve_test_env
+            return resolve_test_env(FeishuClient(f), product_name, list(env_cfg.doc_keywords))
         except Exception:
             return None
 
