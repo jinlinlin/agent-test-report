@@ -31,6 +31,8 @@ class LLMConfig:
 class AgentConfig:
     max_steps: int = 12
     clarify_max_times: int = 1
+    interactive_clarify: bool = False  # V2-1：开启后模糊输入走交互澄清回合；默认关时行为与 V1 逐字一致
+    llm_intent_fallback: bool = False  # V2-1 延伸：规则未命中时 LLM 在候选集内翻译意图；默认关时不产生任何 LLM 调用
 
 
 @dataclass
@@ -162,6 +164,8 @@ def load_config(settings_path: Path | str = SETTINGS_PATH, **overrides) -> Confi
         agent=AgentConfig(
             max_steps=_get(_get(raw, "agent", {}), "max_steps", 12),
             clarify_max_times=_get(_get(raw, "agent", {}), "clarify_max_times", 1),
+            interactive_clarify=str(_get(_get(raw, "agent", {}), "interactive_clarify", False)).lower() in ("1", "true", "yes", "on"),
+            llm_intent_fallback=str(_get(_get(raw, "agent", {}), "llm_intent_fallback", False)).lower() in ("1", "true", "yes", "on"),
         ),
         zentao=ZentaoConfig(
             base_url=os.getenv("ZENTAO_BASE_URL", "") or _get(_get(raw, "zentao", {}), "base_url", ""),

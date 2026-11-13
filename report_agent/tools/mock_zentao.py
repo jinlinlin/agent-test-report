@@ -19,6 +19,7 @@ MOCK_VERSIONS: Dict[str, Dict[str, Any]] = {
         "test_end": "2026-10-23",
         "product_name": "UniResearch",
         "build": "V5.0.0",
+        "build_created": "2026-09-25",
     },
     # V2-8 回归评测集补充版本（覆盖发布准入的另两条结论分支，见 evals/）：
     # V6.0.0 全部已关闭 → 「均达标可发布」分支；V6.1.0 存在激活 P1 → 「P1 否决」分支。
@@ -29,6 +30,7 @@ MOCK_VERSIONS: Dict[str, Dict[str, Any]] = {
         "test_end": "2026-10-20",
         "product_name": "UniResearch",
         "build": "V6.0.0",
+        "build_created": "2026-10-25",
     },
     "UniResearch V6.1.0": {
         "name": "UniResearch V6.1.0",
@@ -37,6 +39,26 @@ MOCK_VERSIONS: Dict[str, Dict[str, Any]] = {
         "test_end": "2026-11-10",
         "product_name": "UniResearch",
         "build": "V6.1.0",
+        "build_created": "2026-11-05",
+    },
+    # 第二个项目（一表通）：专供 V2-1 “多项目/两缺先问项目不跳项目串候选”分支离线可测。
+    "一表通项目 V1.2.0": {
+        "name": "一表通项目 V1.2.0",
+        "description": "一表通报表导出与汇总（评测基准版本，供候选列表第二项目）。",
+        "test_start": "2026-07-20",
+        "test_end": "2026-08-05",
+        "product_name": "一表通项目",
+        "build": "V1.2.0",
+        "build_created": "2026-08-10",
+    },
+    "一表通项目 V1.3.0": {
+        "name": "一表通项目 V1.3.0",
+        "description": "一表通权限粒度到列级（评测基准版本，供候选列表第二项目最新版）。",
+        "test_start": "2026-09-01",
+        "test_end": "2026-09-12",
+        "product_name": "一表通项目",
+        "build": "V1.3.0",
+        "build_created": "2026-09-15",
     },
 }
 
@@ -104,6 +126,17 @@ MOCK_BUGS: Dict[str, List[Dict[str, Any]]] = {
         _bug(2, "/ 科研实验", 2, "closed", "fixed", 0, "tester_b", "dev_wang"),
         _bug(3, "/ 文献管理", 3, "resolved", "fixed", 0, "tester_c", "dev_li"),
     ],
+    # 一表通项目版本：少量代表性缺陷，仅供 V2-1 端到端“选定候选后正常出报告”演示。
+    "一表通项目 V1.2.0": [
+        _bug(1, "/ 报表导出", 2, "closed", "fixed", 0, "tester_a", "dev_wang"),
+        _bug(2, "/ 报表导出", 3, "closed", "fixed", 1, "tester_b", "dev_zhao"),
+        _bug(3, "/ 数据汇总", 3, "closed", "fixed", 0, "tester_c", "dev_li"),
+    ],
+    "一表通项目 V1.3.0": [
+        _bug(1, "/ 权限管理", 2, "active", "", 1, "tester_a", ""),
+        _bug(2, "/ 权限管理", 3, "closed", "fixed", 0, "tester_b", "dev_wang"),
+        _bug(3, "/ 数据汇总", 3, "resolved", "fixed", 0, "tester_c", "dev_li"),
+    ],
 }
 
 
@@ -142,3 +175,43 @@ def fetch_bugs(version_name: str, fault: str = "none") -> ToolResult:
     if key is None:
         return ToolResult(ok=False, error="版本不存在", meta={"fetch_status": "not_found"})
     return ToolResult(ok=True, data=[dict(b) for b in MOCK_BUGS.get(key, [])], meta={"fetch_status": "ok"})
+
+
+# ---- V2-1 澄清候选查询（与 live 的 list_version_candidates 工具同形）----
+
+def list_products() -> List[str]:
+    """已知项目名（去重，长名优先），供意图分类与候选列举。"""
+    names = {v.get("product_name", "") for v in MOCK_VERSIONS.values() if v.get("product_name")}
+    return sorted(names, key=len, reverse=True)
+
+
+def _match_product(hint: str) -> str:
+    """先精确后包含匹配项目名（对齐 find_product 口径）；无命中返回空串。"""
+    h = (hint or "").strip().lower()
+    if not h:
+        return ""
+    names = list_products()  # 已按长度降序，长名（最具体）优先
+    for n in names:
+        if n.lower() == h:
+            return n
+    for n in names:
+        if n.lower() in h or h in n.lower():
+            return n
+    return ""
+
+
+def list_candidates(product_hint: str) -> ToolResult:
+    """列该项目全部候选版本，按 build_created 倒序（最新在前）。
+
+    “最新”口径由本函数排序钉死（程序决定），不交模型裁量；未知项目返回空候选（ok 仍为 True，由上层决定转“不存在”还是“先问项目”）。
+    """
+    prod = _match_product(product_hint)
+    if not prod:
+        return ToolResult(ok=True, data={"product": "", "candidates": []})
+    rows = [v for v in MOCK_VERSIONS.values() if v.get("product_name") == prod]
+    rows.sort(key=lambda v: str(v.get("build_created") or ""), reverse=True)
+    cands = [
+        {"name": v["name"], "build": v.get("build", ""), "created": v.get("build_created", "")}
+        for v in rows
+    ]
+    return ToolResult(ok=True, data={"product": prod, "candidates": cands})

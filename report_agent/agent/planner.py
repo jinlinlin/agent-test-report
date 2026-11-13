@@ -21,6 +21,22 @@ from .state import AgentState
 
 VERSION_PATTERN = re.compile(r"([A-Za-z\u4e00-\u9fa5]+\s*)?[Vv]?\d+(?:\.\d+)+")
 
+# 半截版本号：项目名后只跟一个数字段（如 "V5"、"5.0"），用于区分“不完整”与“缺失”。
+# 注意：全版本号（≥两段点分，如 V5.0.0）由 FULL_BUILD 识别，不走此宽松匹配。
+PARTIAL_VERSION = re.compile(r"[Vv]?\d+(?:\.\d+)?")
+
+# 全版本 token（≥两段点分）：不带 VERSION_PATTERN 的字母/中文前缀组，
+# 避免把项目词一并吞进匹配（否则会与 product 拼接时重复）。
+FULL_BUILD = re.compile(r"[Vv]?\d+(?:\.\d+)+")
+
+# 相对版本词：原始输入里表达「最新/上一个/新的」的措辞（无具体版本号时的语义线索）。
+# 口径不变：词只映射到候选集序号（0=最新，1=上一个），候选排序仍由程序钉死。
+# 注意「上个」系必须连写，避免「最新版本」被误判为「上一个版本」。
+REL_VERSION_WORDS = re.compile(
+    r"上一个|上一版|上版|上个版本|上个版|previous|"
+    r"最新|最近|latest|newest|新的"
+)
+
 
 @dataclass
 class Action:
@@ -39,6 +55,65 @@ def extract_version_name(user_input: str) -> Optional[str]:
     if m:
         return m.group(0).strip()
     return None
+
+
+@dataclass
+class Intent:
+    """V2-1 模糊输入三态分类结果（项目名与版本号各自独立判定）。"""
+    kind: str                    # "complete" | "incomplete" | "missing"
+    product_hint: str = ""       # 命中的项目关键字（如 "UniResearch"）
+    version_hint: str = ""       # 抽到的版本号原文（完整或半截）
+    resolved_version: str = ""   # 完整态时直接给出的确定全名候选
+    rel_hint: int = -1           # 相对版本词命中的候选序号（0=最新，1=上一个）；-1 未命中
+
+
+def classify_input(user_input: str, known_products: List[str]) -> Intent:
+    """纯规则、不调模型：项目名与版本号各自独立判定，返回三态。
+
+    - 项目名：在 known_products 里做「先精确（子串）后包含」匹配（对齐 F12 口径）；
+    - 版本号：VERSION_PATTERN 命中全名→完整；只有 PARTIAL 片段→不完整；无→缺版本。
+    开关 agent.interactive_clarify 默认关时 loop 不会调用本函数，行为与 V1 逐字一致。
+    """
+    text = (user_input or "").strip()
+
+    # 1) 项目判定（先精确子串；再用「文本词是项目名前缀」兼容简称，如「一表通」→「一表通项目」）
+    product = ""
+    tl = text.lower()
+    for p in known_products:
+        if p and p.lower() in tl:
+            product = p
+            break
+    if not product:
+        # known_products 已按长度降序，长名（最具体）优先，避免短名误抢
+        for p in known_products:
+            pl = p.lower()
+            if not pl:
+                continue
+            for tok in re.findall(r"[A-Za-z\u4e00-\u9fa5]+", text):
+                if len(tok) >= 2 and pl.startswith(tok.lower()):
+                    product = p
+                    break
+            if product:
+                break
+
+    # 2) 版本判定（独立于项目；用 FULL_BUILD 只提版本 token，不含项目词）
+    full = FULL_BUILD.search(text)              # 如 V5.0.0（≥两段）
+    partial = PARTIAL_VERSION.search(text)       # 如 V5（单段）
+    version = full.group(0).strip() if full else (partial.group(0).strip() if partial else "")
+
+    # 3) 相对版本词：仅在没有全版本号时才有意义（有全名时它优先，措辞里的「最新」只是赘词）
+    rel = -1
+    if not full:
+        m = REL_VERSION_WORDS.search(text)
+        if m:
+            rel = 1 if ("上" in m.group(0) or "previous" in m.group(0)) else 0
+
+    # 4) 三态汇总：项目+全版本→完整；有任一线索（项目/版本片段/相对词）但不构成完整→不完整；全无线索→缺失
+    if full and product:
+        return Intent("complete", product, version, f"{product} {version}")
+    if product or full or partial or rel >= 0:
+        return Intent("incomplete", product, version, rel_hint=rel)
+    return Intent("missing")                     # 无项目也无版本数字→先问项目
 
 
 class DeterministicPlanner:

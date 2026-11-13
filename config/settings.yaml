@@ -14,6 +14,8 @@ llm:
 agent:
   max_steps: 12          # 执行上限；验证 V1-005（步数超限）时调小，例如 3
   clarify_max_times: 1   # 缺版本名时最多澄清次数（V1-007）
+  interactive_clarify: false   # V2-1：模糊输入交互澄清回合；关时行为与 V1 逐字一致
+  llm_intent_fallback: false   # V2-1 延伸：规则未命中时 LLM 仅在候选集内翻译意图；关时不产生任何额外 LLM 调用
 
 zentao:
   # 真实禅道地址请勿写入本文件（会随仓库入版本控制）：

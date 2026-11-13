@@ -13,7 +13,7 @@ from typing import Optional
 
 from ..report.renderer import render_failure_report, render_step_limit_report
 from ..tools.base import ToolRegistry, ToolResult
-from .planner import Action, extract_version_name
+from .planner import Action, classify_input, extract_version_name
 from .state import AgentState
 from .termination import should_terminate
 
@@ -21,24 +21,38 @@ FETCH_TOOLS = {"get_version_info", "get_version_bugs"}
 
 
 class ReportAgent:
-    def __init__(self, cfg, registry: ToolRegistry, planner, tracer) -> None:
+    def __init__(self, cfg, registry: ToolRegistry, planner, tracer, ask=None, llm=None) -> None:
         self.cfg = cfg
         self.registry = registry
         self.planner = planner
         self.tracer = tracer
+        # 交互澄清回调：ask(question, options) -> 用户答复字符串。为 None 时无法交互，
+        # 仅在 cfg.agent.interactive_clarify 开启且输入歧义时使用（CLI 接 input()、测试注入脚本化答复）。
+        self.ask = ask
+        # LLM 兜底翻译（llm_intent_fallback 开启才用）：规则不命中时把原始输入映射到程序给的候选集，
+        # 模型只翻译不造事实；默认关时无 LLM 也能全链路跑通（离线可跑约束不变）。
+        self.llm = llm
 
     # ---- 对外入口 ----
     def run(self, user_input: str) -> AgentState:
         state = AgentState(user_input=user_input)
-        state.version_name = extract_version_name(user_input)
 
-        # 缺版本名：触发一次澄清（CLI 场景直接返回 clarify，由上层决定如何补全）
-        if state.version_name is None:
-            state.status = "clarify"
-            state.fail_reason = "缺少版本名称"
-            self.tracer.log(step=0, type="terminate", thought="输入未识别到版本名称",
-                            fail_reason="clarify", user_input=user_input, state_snapshot=state.snapshot())
-            return state
+        if self.cfg.agent.interactive_clarify:
+            # V2-1 交互澄清（仅开关开启时进入）：三态识别 + 候选反问 + 至多 2 回合
+            state = self._resolve_with_clarify(state)
+            if state.status == "clarify":
+                self.tracer.log(step=0, type="terminate", thought="输入歧义，需用户澄清",
+                                fail_reason="clarify", user_input=user_input, state_snapshot=state.snapshot())
+                return state
+        else:
+            # 关闭时与 V1 逐字一致：二态抽取，抽不到直接一次性返回 clarify
+            state.version_name = extract_version_name(user_input)
+            if state.version_name is None:
+                state.status = "clarify"
+                state.fail_reason = "缺少版本名称"
+                self.tracer.log(step=0, type="terminate", thought="输入未识别到版本名称",
+                                fail_reason="clarify", user_input=user_input, state_snapshot=state.snapshot())
+                return state
 
         self.tracer.log(step=0, type="llm_reasoning", thought=f"识别到版本名称：{state.version_name}",
                         user_input=user_input, state_snapshot=state.snapshot())
@@ -74,6 +88,215 @@ class ReportAgent:
         self._finalize(state, max_steps)
         self.tracer.log(step=state.step, type="terminate", thought=f"终止状态：{state.status}",
                         fail_reason=state.fail_reason, state_snapshot=state.snapshot())
+        return state
+
+    # ---- V2-1 交互澄清（仅 interactive_clarify 开启时被 run() 调用）----
+    def _known_products(self) -> list:
+        """已知项目名：mock 取本地表；live 拉 /products（异常回退 default_product）。"""
+        if self.cfg.zentao.mode == "mock":
+            from ..tools import mock_zentao
+            return mock_zentao.list_products()
+        try:
+            from ..tools import zentao_client as zc
+            client = zc.ZentaoRestClient(self.cfg)
+            names = {str(p.get(self.cfg.zentao.field_product_name, "")).strip() for p in client._all_products()}
+            names.discard("")
+            if names:
+                return sorted(names, key=len, reverse=True)
+        except Exception:
+            pass
+        return [self.cfg.zentao.default_product] if self.cfg.zentao.default_product else []
+
+    def _candidates(self, product_hint: str) -> list:
+        """调候选工具取该项目版本候选（已按创建时间倒序，最新在前）。"""
+        tool = self.registry.get("list_version_candidates")
+        if tool is None:
+            return []
+        res = tool.run(product_hint=product_hint)
+        return res.data.get("candidates", []) if (res.ok and isinstance(res.data, dict)) else []
+
+    @staticmethod
+    def _resolve_product(answer: str, products: list) -> str:
+        """把用户对项目的自然语言答复映射为确定项目名（序号/包含匹配）。"""
+        a = (answer or "").strip()
+        la = a.lower()
+        if a.isdigit():
+            i = int(a) - 1
+            return products[i] if 0 <= i < len(products) else ""
+        for p in products:
+            if p.lower() in la:
+                return p
+        return ""
+
+    @staticmethod
+    def _resolve_version(answer: str, cands: list) -> str:
+        """把用户对版本的自然语言答复映射为确定版本全名。
+
+        “最新的”→cands[0]（已按创建时间倒序，程序钉死）；序号→第 i 个；否则按 build/名称包含匹配。
+        """
+        a = (answer or "").strip()
+        la = a.lower()
+        if a.isdigit():
+            i = int(a) - 1
+            return cands[i]["name"] if 0 <= i < len(cands) else ""
+        if "最新" in a or la in ("latest", "new", "last", "最近"):
+            return cands[0]["name"] if cands else ""
+        for c in cands:
+            if c.get("build") and c["build"].lower() in la:
+                return c["name"]
+        return ""
+
+    def _default_product_hint(self, products: list) -> str:
+        """未给项目名时的兜底：zentao.default_product 需在已知项目内才可用（不编造未知项目）。"""
+        dp = (self.cfg.zentao.default_product or "").strip()
+        if not dp:
+            return ""
+        for p in products:
+            if p.lower() == dp.lower() or dp.lower() in p.lower() or p.lower() in dp.lower():
+                return p
+        return ""
+
+    def _llm_fallback_enabled(self) -> bool:
+        """兜底开关开启 + LLM 可用才启用；任一不满足退回现有反问链路，行为与未实现时一致。"""
+        return bool(getattr(self.cfg.agent, "llm_intent_fallback", False)
+                    and self.llm is not None and getattr(self.llm, "available", False))
+
+    def _llm_resolve(self, state: AgentState) -> str:
+        """LLM 兜底翻译：把原始输入在「程序给的候选集」内映射到确定版本全名。
+
+        分工沿用 V2-1 §5：事实（候选集与排序）程序钉死，模型只做自然语言翻译；
+        模型答复不在候选集内一律返回空串交回现有流程（防幻觉，不编造版本）。
+        """
+        # 无论有无交互入口，都用兜底项目列候选（无 ask 时这是唯一直接命中路径，能救回 clarify 退出）
+        product = self._default_product_hint(self._known_products())
+        if not product:
+            return ""
+        cands = self._candidates(product)
+        if not cands:
+            return ""
+        names = [c["name"] for c in cands]
+        prompt = (
+            f"用户请求：{state.user_input}\n"
+            f"可选版本（仅能从中选一个，按创建时间从新到旧排列）：{names}\n"
+            "若能从候选中确定用户意图的版本，只输出该候选的完整名称；"
+            "不确定则只输出 None。不要创造候选之外的版本。"
+        )
+        try:
+            answer = self.llm.complete(
+                prompt, system="你是输入意图解析器，只能从给定候选中选择，禁止编造。")
+        except Exception:
+            return ""
+        a = (answer or "").strip()
+        if not a or a.lower() == "none":
+            return ""
+        for n in names:
+            if n.lower() in a.lower() or a.lower() in n.lower():
+                return n
+        return ""
+
+    @staticmethod
+    def _prefilter(cands: list, version_hint: str) -> list:
+        """半截版本号（如「V5」）按前缀预筛候选；命中则收窄，否则原样返回（全版本号不参与预筛）。"""
+        if version_hint and version_hint.count(".") < 2:
+            token = version_hint.lstrip("Vv").strip()
+            pref = [c for c in cands if str(c.get("build", "")).lstrip("Vv").startswith(token)]
+            if pref:
+                return pref
+        return cands
+
+    def _resolve_with_clarify(self, state: AgentState) -> AgentState:
+        """三态识别 + 候选反问，将确定的版本全名写回 state.version_name；仍歧义则置 clarify。
+
+        项目/版本各至多问 1 次、总≤２回合；答复无法解析时不硬编，交主链路按现有逻辑处理。
+        """
+        max_rounds = 2
+        products = self._known_products()
+        intent = classify_input(state.user_input, products)
+
+        if intent.kind == "complete":
+            state.version_name = intent.resolved_version
+            return state
+
+        # 相对版本词短路（规则层，不花 token）：「最新的/上个版本」直接取排序后候选，
+        # 不再反问——修复「原始输入说了最新还是被问」。「最新」口径仍由候选排序钉死（程序定事实）。
+        # 仅在项目已识别时短路：项目未知不猜默认项目（否则会静默产出错项目的报告），退回下面先问项目。
+        if intent.rel_hint >= 0 and intent.product_hint:
+            product = intent.product_hint
+            cands = self._candidates(product)
+            if cands and intent.rel_hint < len(cands):
+                state.version_name = cands[intent.rel_hint]["name"]
+                self.tracer.log(step=0, type="llm_reasoning",
+                                thought=f"输入命中相对版本词，直接选定：{state.version_name}",
+                                user_input=state.user_input, state_snapshot=state.snapshot())
+                return state
+            # rel_hint 超出候选数（如只一个版本却问「上一个」）：不猜，继续走后续流程
+
+        # LLM 兜底翻译（新开关 llm_intent_fallback，默认关时下面整段不执行）：
+        # 规则不命中 → 模型在程序给的候选集内选择；答不在集内一律丢弃（防幻觉）。
+        if self._llm_fallback_enabled():
+            hit = self._llm_resolve(state)
+            if hit:
+                state.version_name = hit
+                self.tracer.log(step=0, type="llm_reasoning",
+                                thought=f"规则未命中，LLM 在候选集内翻译命中：{hit}",
+                                user_input=state.user_input, state_snapshot=state.snapshot())
+                return state
+
+        # 项目已知时的确定性收敛：列候选 + 半截版本前缀预筛，唯一命中直接采用，
+        # 无需交互入口也能定（只有 >1 的真歧义才需要问人），避免可判定的输入被白白 clarify。
+        if intent.product_hint:
+            uniq = self._prefilter(self._candidates(intent.product_hint), intent.version_hint)
+            if len(uniq) == 1:
+                state.version_name = uniq[0]["name"]
+                self.tracer.log(step=0, type="llm_reasoning",
+                                thought=f"项目已知且候选唯一，直接选定：{state.version_name}",
+                                user_input=state.user_input, state_snapshot=state.snapshot())
+                return state
+
+        if self.ask is None:
+            state.status = "clarify"
+            state.fail_reason = "输入不完整且未提供交互入口，无法澄清"
+            return state
+
+        rounds = 0
+        product = intent.product_hint
+
+        # 缺项目名：先问项目（两缺时的第一回合）
+        if not product:
+            if rounds >= max_rounds:
+                state.status = "clarify"
+                state.fail_reason = "澄清回合已达上限"
+                return state
+            ans = self.ask("未识别到项目名，请选择项目：", products)
+            rounds += 1
+            state.clarify_count += 1
+            product = self._resolve_product(ans, products)
+            if not product:
+                state.status = "clarify"
+                state.fail_reason = "项目仍无法识别"
+                return state
+
+        # 有项目、无完整版本：列候选（半截版本号按前缀预筛，唯一命中已在上面拦截）
+        cands = self._prefilter(self._candidates(product), intent.version_hint)
+        if len(cands) == 1:
+            state.version_name = cands[0]["name"]
+            return state
+        if len(cands) == 0:
+            # 无候选：交主链路按现有「版本不存在」处理（不编造）
+            state.version_name = extract_version_name(state.user_input) or product
+            return state
+
+        # 候选 >1：反问版本
+        if rounds >= max_rounds:
+            state.status = "clarify"
+            state.fail_reason = "版本仍有歧义，澄清回合已达上限"
+            return state
+        ans = self.ask(f"{product} 下有多个版本，请选择（可答序号／版本名／最新的）：",
+                       [c["name"] for c in cands])
+        rounds += 1
+        state.clarify_count += 1
+        chosen = self._resolve_version(ans, cands)
+        state.version_name = chosen or (extract_version_name(state.user_input) or product)
         return state
 
     # ---- 工具执行 ----

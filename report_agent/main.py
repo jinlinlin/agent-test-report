@@ -20,6 +20,7 @@ from .tools.polish_conclusion import PolishConclusionTool
 from .tools.push_feishu import PushFeishuTool
 from .tools.render_report import RenderReportTool
 from .tools.statistics import ComputeStatisticsTool
+from .tools.version_candidates import ListVersionCandidatesTool
 from .tools.zentao_bugs import GetVersionBugsTool
 from .tools.zentao_version import GetVersionInfoTool
 from .trace.tracer import Tracer
@@ -30,6 +31,9 @@ def build_registry(cfg, llm=None) -> ToolRegistry:
     reg.register(GetVersionInfoTool(cfg))
     reg.register(GetVersionBugsTool(cfg))
     reg.register(ComputeStatisticsTool())
+    # V2-1：只读候选列举工具（供模糊输入澄清时模型/循环调用）；不依赖开关，
+    # 仅在 interactive_clarify 开启时才会被 loop 触发，否则链路行为与现状一致。
+    reg.register(ListVersionCandidatesTool(cfg))
     # F17：仅开关开启时注册润色工具，关闭时工具集与链路行为与现状完全一致
     if cfg.report.polish_conclusion:
         reg.register(PolishConclusionTool(cfg, llm))
@@ -38,21 +42,35 @@ def build_registry(cfg, llm=None) -> ToolRegistry:
     return reg
 
 
-def build_agent(cfg) -> tuple[ReportAgent, Tracer]:
+def build_agent(cfg, ask=None) -> tuple[ReportAgent, Tracer]:
     llm = LLMClient(cfg)
     registry = build_registry(cfg, llm)
     planner = build_planner(cfg, llm, registry.specs())
     tracer = Tracer(enabled=cfg.trace.enabled, trace_dir=cfg.trace_dir)
-    return ReportAgent(cfg, registry, planner, tracer), tracer
+    # llm 同时透传给 loop：仅供 V2-1 延伸的 LLM 兜底翻译（llm_intent_fallback 开启才使用），默认关不影响现有链路
+    return ReportAgent(cfg, registry, planner, tracer, ask=ask, llm=llm), tracer
 
 
 def _safe_name(version_name: str) -> str:
     return "".join(ch if ch.isalnum() or ch in "._-" else "_" for ch in (version_name or "report"))
 
 
+def _terminal_ask(question: str, options) -> str:
+    """命令行交互澄清：打印候选并读一行输入。仅在 interactive_clarify 开启且输入歧义时被 loop 调用；
+    非交互环境（管道/EOF）返回空串，由 loop 优雅退回 clarify，不会挂起。"""
+    print(question)
+    for i, opt in enumerate(options, 1):
+        print(f"  {i}. {opt}")
+    try:
+        return input("请输入序号或内容（直接回车跳过）：").strip()
+    except (EOFError, KeyboardInterrupt):
+        return ""
+
+
 def run_once(user_input: str, **overrides) -> tuple[Path | None, Path | None, str, str | None]:
     cfg = load_config(**overrides)
-    agent, tracer = build_agent(cfg)
+    # 开关开启时才接上终端 input()；关闭时传 None，行为与 V1 逐字一致。
+    agent, tracer = build_agent(cfg, ask=(_terminal_ask if cfg.agent.interactive_clarify else None))
     state = agent.run(user_input)
 
     # 落盘报告
@@ -138,6 +156,10 @@ def main(argv=None) -> int:
                         help="生成后将报告推送至飞书云文档/知识库（需先在 .env 配好飞书凭据与 token）")
     parser.add_argument("--polish", action="store_true",
                         help="开启 F17 结论段 LLM 润色（覆盖 report.polish_conclusion；数字不一致自动回退模板）")
+    parser.add_argument("--interactive-clarify", action="store_true", dest="interactive_clarify",
+                        help="开启 V2-1 模糊输入交互澄清（覆盖 agent.interactive_clarify；歧义时列候选并终端反问）")
+    parser.add_argument("--llm-intent-fallback", action="store_true", dest="llm_intent_fallback",
+                        help="开启 V2-1 延伸 LLM 兜底意图翻译（覆盖 agent.llm_intent_fallback；仅在候选集内选择，需可用 LLM）")
     args = parser.parse_args(argv)
 
     overrides = {}
@@ -151,6 +173,10 @@ def main(argv=None) -> int:
         overrides["feishu.enabled"] = True
     if args.polish:
         overrides["report.polish_conclusion"] = True
+    if args.interactive_clarify:
+        overrides["agent.interactive_clarify"] = True
+    if args.llm_intent_fallback:
+        overrides["agent.llm_intent_fallback"] = True
 
     if args.probe:
         return run_probe(args.user_input, **overrides)
