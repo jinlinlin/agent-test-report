@@ -125,9 +125,11 @@ class PushFeishuTool(Tool):
         if not (active or postponed):
             return ""
         from ..report.renderer import DEFECT_FIELD_SPECS, bug_to_fields
+        # 空类不内嵌对应标题块+表（与正文第 6 节「空类不展示」同口径，用户 2026-11-13 要求），剩下类顺次重编号
+        specs = [("当前版本遗留未解决bug", active), ("当前版本延期处理bug", postponed)]
         groups = [
-            ("6.1 当前版本遗留未解决bug", [bug_to_fields(r, i + 1) for i, r in enumerate(active)]),
-            ("6.2 当前版本延期处理bug", [bug_to_fields(r, i + 1) for i, r in enumerate(postponed)]),
+            (f"6.{i} {title}", [bug_to_fields(r, j + 1) for j, r in enumerate(rows)])
+            for i, (title, rows) in enumerate([(t, rs) for t, rs in specs if rs], 1)
         ]
         try:
             apps = client.embed_defect_bitable(doc_token, groups, DEFECT_FIELD_SPECS)

@@ -41,8 +41,26 @@ def test_bug_to_fields_full_and_mapped():
 def test_section6_inline_when_no_url():
     stats = _stats([{"id": 1, "status": "active", "resolution": "", "module": "/A", "severity": 3}])
     md = render_report(stats)
+    # 空类不展示：postponed 为空 → 无延期小节，激活类顺次重编号为 6.1
+    assert "延期处理缺陷清单" not in md
+    assert "## 6.1 激活（待解决）缺陷清单" in md
+    assert "## 6.2" not in md
+
+
+def test_section6_only_postponed_renumbers():
+    stats = _stats([{"id": 1, "status": "resolved", "resolution": "postponed", "module": "/A", "severity": 3}])
+    md = render_report(stats)
     assert "## 6.1 延期处理缺陷清单" in md
-    assert "## 6.2 激活（待解决）缺陷清单" in md
+    assert "激活（待解决）缺陷清单" not in md
+
+
+def test_section6_both_empty_no_section():
+    md = render_report(_stats([]))
+    # 两类皆空：整个第 6 节连标题一起不显示，正文止于第 5 节
+    assert "# 6. 缺陷清单" not in md
+    assert "## 6.1" not in md and "## 6.2" not in md
+    assert "延期处理缺陷清单" not in md and "激活（待解决）缺陷清单" not in md
+    assert "下列清单内嵌本版本需重点关注的两类缺陷" not in md
 
 
 # ---- C 方案：文档内嵌多维表格块 ----
@@ -159,7 +177,12 @@ def test_push_embed_defects_gating_and_success():
     cfg_on = load_config(**{**BASE, "feishu.enabled": True, "feishu.defect_bitable": True,
                             "feishu.defect_bitable_embed": True}).feishu
     fake = _EmbedFakeClient(cfg_on)
-    assert pf.PushFeishuTool._embed_defects(fake, cfg_on, "docX", stats) == "appX,appX"
+    # 新口径：postponed 为空→不内嵌该组，只剩激活一张表（旧行为为两张含空表）
+    assert pf.PushFeishuTool._embed_defects(fake, cfg_on, "docX", stats) == "appX"
+    heading_texts = [b["children"][0]["heading3"]["elements"][0]["text_run"]["content"]
+                     for v, _p, b in fake.calls
+                     if v == "POST" and isinstance(b, dict) and "children" in b and b["children"][0].get("block_type") == 5]
+    assert heading_texts == ["6.1 当前版本遗留未解决bug"]
 
 
 def test_push_embed_defects_swallows_exception():
