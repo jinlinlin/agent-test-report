@@ -92,6 +92,10 @@ class FeishuConfig:
     chart_display_scale: float = 1.0           # 仅放大图片在飞书文档中的显示尺寸（等比倍率，1.0=不变；不改页面/正文）
     defect_bitable: bool = True                # 开启飞书时，第 6 节缺陷清单以多维表格呈现（未启用/无缺陷则回退正文宽表）
     defect_bitable_embed: bool = True              # 多维表格以“文档内嵌块”展开在正文（C）；false 则回退为正文内嵌宽表（不再建独立知识库节点）
+    # 导入后把正文各表格首行标记为飞书内置标题行（整格底色；飞书 API 无格级背景色，颜色不可单独指定。false=关闭零触碰）
+    table_header_row: bool = True
+    # 导入后按版式补打正文表格列宽（docx 导入会把列宽重置为等宽，实测；false=关闭零触碰）
+    table_column_widths: bool = True
 
 
 @dataclass
@@ -271,6 +275,8 @@ def load_config(settings_path: Path | str = SETTINGS_PATH, **overrides) -> Confi
             chart_display_scale=float(_get(_get(raw, "feishu", {}), "chart_display_scale", 1.0)),
             defect_bitable=str(_get(_get(raw, "feishu", {}), "defect_bitable", True)).lower() in ("1", "true", "yes", "on"),
             defect_bitable_embed=str(_get(_get(raw, "feishu", {}), "defect_bitable_embed", True)).lower() in ("1", "true", "yes", "on"),
+            table_header_row=str(_get(_get(raw, "feishu", {}), "table_header_row", True)).lower() in ("1", "true", "yes", "on"),
+            table_column_widths=str(_get(_get(raw, "feishu", {}), "table_column_widths", True)).lower() in ("1", "true", "yes", "on"),
         ),
         mock=MockConfig(fault=_get(_get(raw, "mock", {}), "fault", "none")),
         trace=TraceConfig(

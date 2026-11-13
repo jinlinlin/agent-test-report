@@ -58,7 +58,7 @@ def render_env_table(rows: Dict[str, Dict[str, str]], source_title: str = "") ->
 
     source_title 仅作调用侧溯源记录用，不写入报告正文（用户 2026-11-13 拍板：表后不加来源标注文字）。
     """
-    out = ["| 环境 | 测试地址 | 账号密码 |", "| --- | --- | --- |"]
+    out = ["| 环境 | 测试地址 | 账号密码 |", "| ---------- | ------------------------- | ------------------------- |"]
     for name in ENV_ROW_NAMES:
         hit = rows.get(name)
         if hit:

@@ -21,7 +21,7 @@ def _chart_block(charts: Optional[Dict[str, str]], key: str, item: str) -> str:
 
 
 def _module_table(stats: StatsResult) -> str:
-    rows = ["| 模块 | 缺陷总数 | 已关闭 | 待解决 | 待验收 | 延期 |", "| --- | --- | --- | --- | --- | --- |"]
+    rows = ["| 模块 | 缺陷总数 | 已关闭 | 待解决 | 待验收 | 延期 |", "|---------------|---------|---------|---------|---------|---------|"]
     for m in stats.module_distribution:
         rows.append(f"| {m.module} | {m.total} | {m.closed} | {m.pending_resolve} | {m.pending_accept} | {m.postponed} |")
     s = stats.summary
@@ -30,7 +30,7 @@ def _module_table(stats: StatsResult) -> str:
 
 
 def _level_table(stats: StatsResult) -> str:
-    rows = ["| 等级 | 缺陷总数 | 激活(待解决) | 已关闭 | 待验收 | 延期 |", "| --- | --- | --- | --- | --- | --- |"]
+    rows = ["| 等级 | 缺陷总数 | 激活(待解决) | 已关闭 | 待验收 | 延期 |", "|---------|---------|------------|---------|---------|---------|"]
     tt = ta = tc = tp = ts = 0
     for lv in stats.level_status_distribution:
         rows.append(f"| {lv.level} | {lv.total} | {lv.active} | {lv.closed} | {lv.pending_accept} | {lv.postponed} |")
@@ -52,7 +52,7 @@ def _tester_table(stats: StatsResult) -> str:
 
     rows = [
         "| 岗位角色 | 人员姓名 |",
-        "| --- | --- |",
+        "| ---------- | ------------------------ |",
         f"| 项目负责人 | {p.project_owner or '【待补充：未配置 field_product_owner】'} |",
         f"| 测试负责人 | {_names(p.test_lead)} |",
         f"| 软件工程师（开发、运维） | {_names(p.developers)} |",
@@ -250,7 +250,7 @@ def render_report(stats: StatsResult, charts: Optional[Dict[str, str]] = None,
     parts.append(_tester_table(stats) + "\n")
     parts.append("## 3.2 测试时间\n")
     parts.append("| 测试阶段 | 开始时间 | 结束时间 |")
-    parts.append("| --- | --- | --- |")
+    parts.append("| ---------------- | ------------ | ------------ |")
     parts.append(f"| {v.name or '版本'} | {v.test_start or '待补充'} | {v.test_end or '待补充'} |\n")
 
     # 4. 功能测试执行及测试结果

@@ -79,9 +79,15 @@ class PushFeishuTool(Tool):
                 url = f"{f.doc_base_url.rstrip('/')}/docx/{doc_token}"
             # C：导入后将第 6 节缺陷清单内嵌为文档内多维表格块（非致命，失败不影响已推送的报告）。
             embed_app = self._embed_defects(client, f, doc_token, stats_obj)
+            # 样式：正文各表格首行标记为飞书内置标题行（整格底色；格级背景色 API 不支持，实测）。
+            header_row = self._mark_table_headers(client, f, doc_token)
+            # 样式：按版式补打表格列宽（docx 导入会把 column_width 重置为等宽，须导入后用块 API 补打；非致命）。
+            col_widths = self._apply_table_column_widths(client, f, doc_token)
             return ToolResult(ok=True, data=url,
                               meta={"doc_token": doc_token, "target": f.target, "import_format": ext,
-                                    "defect_bitable_embed": embed_app})
+                                    "defect_bitable_embed": embed_app,
+                                    "table_header_row": header_row,
+                                    "table_column_widths": col_widths})
         except FeishuError as exc:
             return ToolResult(ok=False, error=f"飞书推送失败：{exc}")
 
@@ -110,6 +116,35 @@ class PushFeishuTool(Tool):
         except FeishuError:
             return project_parent
         return created or project_parent
+
+    @staticmethod
+    def _mark_table_headers(client: FeishuClient, f, doc_token: str) -> bool:
+        """导入后把正文各 docx 表格首行标记为飞书内置标题行（用户 2026-11-13 选定）。
+
+        飞书 docx OpenAPI 无格级背景色（实测：table_cell 无样式字段、batch_update 子请求均不支持），
+        格内文本块背景色只染文字周围（高亮条形态被用户否决），故改用内置标题行——整格填满，
+        颜色为飞书内置不可单独指定。feishu.table_header_row=false 时一次网络调用都不发。
+        任何异常吞掉返回 False，不阻断已推送的报告。内嵌多维表格有自己的表头样式，不受影响。"""
+        if not getattr(f, "table_header_row", True):
+            return False
+        try:
+            return client.mark_table_header_rows(doc_token) > 0
+        except Exception:
+            return False
+
+    @staticmethod
+    def _apply_table_column_widths(client: FeishuClient, f, doc_token: str) -> bool:
+        """导入后把报告已知版式的表格列宽按内容比例补打（用户 2026-11-13 要求）。
+
+        docx 导入会把列宽重置为等宽（实测），md 分隔行 dash 比例不落地，故用飞书块 API
+        update_table_property 补打。feishu.table_column_widths=false 时一次网络调用都不发。
+        任何异常吞掉返回 False，不阻断已推送的报告。"""
+        if not getattr(f, "table_column_widths", True):
+            return False
+        try:
+            return client.set_table_column_widths(doc_token)
+        except Exception:
+            return False
 
     @staticmethod
     def _embed_defects(client: FeishuClient, f, doc_token: str, stats_obj) -> str:

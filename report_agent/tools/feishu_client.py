@@ -549,3 +549,105 @@ class FeishuClient:
         except FeishuError:
             return []
         return list(payload.get("data", {}).get("items", []) or [])
+
+    # ---- 导入后样式：表格标题行与列宽 ----
+    def _list_all_blocks(self, document_id: str) -> list:
+        """分页拉取文档全部块（page_size=500 循环至 has_more=false），供导入后样式类方法复用。"""
+        items, page_token = [], ""
+        while True:
+            params = {"page_size": 500}
+            if page_token:
+                params["page_token"] = page_token
+            data = self._get(f"/docx/v1/documents/{document_id}/blocks", params=params).get("data", {})
+            items += list(data.get("items", []) or [])
+            if not data.get("has_more"):
+                break
+            page_token = data.get("page_token", "")
+        return items
+
+    def mark_table_header_rows(self, document_id: str, _BATCH: int = 200) -> int:
+        """把文档内所有 docx 表格的首行标记为标题行（飞书内置标题行样式，整格填满）。
+
+        实测口径（2026-11-13）：飞书 docx OpenAPI 没有格级背景色能力——table_cell 无样式字段，
+        batch_update 的 15 种子请求均不支持；格内文本块背景色只染文字周围（高亮条，用户反馈不要）。
+        唯一整格填充的形态就是 header_row 内置样式，颜色为飞书内置、不可单独指定。
+        每批≤200 请求、串行间 sleep 避开单文档 3次/秒编辑限频。异常上抛由调用方吞掉（非致命）。
+        返回标记的表格数。
+        """
+        import time as _time
+
+        requests_ = [{"block_id": tb["block_id"], "update_table_property": {"header_row": True}}
+                     for tb in self._list_all_blocks(document_id) if tb.get("block_type") == 31]
+        for i in range(0, len(requests_), _BATCH):
+            self._patch(f"/docx/v1/documents/{document_id}/blocks/batch_update",
+                        {"requests": requests_[i:i + _BATCH]})
+            _time.sleep(0.4)
+        return len(requests_)
+
+    # ---- 导入后样式：按表头文字匹配版式，设置表格列宽 ----
+    # 实测口径（2026-11-13 探针）：docx 导入会把 column_width 重置为全表等宽默认值
+    # （2 列 330px/3 列 220px/6 列 110px…），md 分隔行 dash 比例不落地。列宽须用单块更新
+    # PATCH /docx/v1/documents/{doc}/blocks/{block_id} 的 update_table_property，且为逐列设置
+    # （column_index + 单个 column_width 整数，px 最小 50；传数组报 code=9499，实测）；
+    # batch_update 子请求不支持该类型（实测 code=1770001），限频约 3 次/秒逐列 sleep。
+    _WIDTH_PROFILES = (
+        # (表头须全部命中的关键词组, 各列占比) —— 按顺序取首个「列数一致且关键词全命中」的版式
+        (("模块", "描述"), (0.20, 0.80)),                     # 2.1 测试范围
+        (("文档", "链接"), (0.25, 0.75)),                     # §1.3 参考文档
+        (("岗位角色", "人员姓名"), (0.33, 0.67)),             # 3.1 测试人员
+        (("环境", "测试地址", "账号密码"), (0.17, 0.41, 0.42)),  # 2.2 测试环境
+        (("缺陷等级",), (0.13, 0.13, 0.20, 0.30, 0.24)),       # 4.6 缺陷级别定义
+        (("模块", "缺陷总数"), (0.25, 0.15, 0.15, 0.15, 0.15, 0.15)),  # 4.1.1 功能缺陷分布
+        (("等级", "缺陷总数"), (0.16, 0.16, 0.20, 0.16, 0.16, 0.16)),  # 4.5 等级状态分布
+    )
+    _WIDTH_TOTAL_PX = 660  # 飞书正文列宽约 660px（等宽默认 2×330/3×220/6×110 均吻合）
+
+    @classmethod
+    def _match_width_profile(cls, header_texts: list, cols: int):
+        """按首行表头文字匹配列宽版式：返回占比元组或 None（未命中不改宽）。"""
+        joined = "".join(str(t or "") for t in header_texts)
+        for keywords, ratios in cls._WIDTH_PROFILES:
+            if len(ratios) == cols and all(k in joined for k in keywords):
+                return ratios
+        return None
+
+    def set_table_column_widths(self, document_id: str) -> bool:
+        """导入后把报告已知版式的表格列宽按内容比例补打（未命中版式的表不动）。
+
+        匹配依据 = 首行表头文字（见 _WIDTH_PROFILES）；总宽 _WIDTH_TOTAL_PX 按占比拆分，
+        单列下限 50px（飞书校验最小值）。任何异常上抛由调用方吞掉（非致命，不得阻断推送主链路）。
+        """
+        import time as _time
+
+        items = self._list_all_blocks(document_id)
+        byid = {b.get("block_id"): b for b in items}
+
+        def _cell_text(cell: dict) -> str:
+            parts = []
+            for kid in cell.get("children", []):
+                kb = byid.get(kid) or {}
+                for el in (kb.get("text", {}) or {}).get("elements", []) or []:
+                    for key in ("text_run", "mention", "equation"):
+                        if el.get(key):
+                            parts.append(str(el[key].get("content", "") or ""))
+            return "".join(parts)
+
+        marked = 0
+        for tb in [b for b in items if b.get("block_type") == 31]:
+            prop = tb.get("table", {}).get("property", {}) or tb.get("table", {})
+            cols = int(prop.get("column_size") or 0)
+            if cols <= 0:
+                continue
+            cells = [byid[i] for i in tb.get("children", []) if byid.get(i, {}).get("block_type") == 32][:cols]
+            ratios = self._match_width_profile([_cell_text(c) for c in cells], cols)
+            if not ratios:
+                continue
+            widths = [max(50, int(round(r * self._WIDTH_TOTAL_PX))) for r in ratios]
+            if widths == [int(w) for w in (prop.get("column_width") or [])]:
+                continue
+            for idx, w in enumerate(widths):  # 逐列设置：单块 PATCH + 限频 sleep
+                self._patch(f"/docx/v1/documents/{document_id}/blocks/{tb.get('block_id')}",
+                            {"update_table_property": {"column_index": idx, "column_width": w}})
+                _time.sleep(0.4)
+                marked += 1
+        return marked > 0
