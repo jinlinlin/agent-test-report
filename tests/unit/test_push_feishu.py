@@ -3,9 +3,12 @@
 覆盖：
 - 工具前置校验分支（未启用/缺凭据/缺 folder/缺 wiki 配置）均如实返回 ok=False；
 - 循环门控：推送成功写 feishu_doc_url；推送失败为非致命，报告仍 finished、不推翻为 failed。
+- NativeFCPlanner 确定性推送守卫：开启推送时不由模型裁量、未开启时不拦截。
 """
 from report_agent.agent.loop import ReportAgent
+from report_agent.agent.planner import NativeFCPlanner
 from report_agent.agent.planner import build_planner
+from report_agent.agent.state import AgentState
 from report_agent.config import load_config
 from report_agent.llm.client import LLMClient
 from report_agent.main import build_registry
@@ -191,3 +194,34 @@ def test_resolve_version_node_create_failure_falls_back():
     fc = _VersionClient(existing="", create_raises=True)
     got = PushFeishuTool._resolve_version_node(fc, _WikiCfg(), "PROJ", "V5.0.0")
     assert got == "PROJ"
+
+
+class _ExplodingLLM:
+    """available=True 但任何调用都报错：若守卫未生效会泄露到模型（或 except 后回退）。"""
+    available = True
+
+    def complete_with_tools(self, messages, tools):
+        raise AssertionError("守卫未生效：不应询问模型")
+
+
+def _fc_planner(cfg):
+    return NativeFCPlanner(_ExplodingLLM(), [], fallback=build_planner(cfg, None, []))
+
+
+def _rendered_state():
+    return AgentState(user_input="v", version_name="UniResearch V5.0.0",
+                      report_markdown="# 报告已生成")
+
+
+def test_fc_planner_push_guard_fires_without_model():
+    """FC 模式：feishu.enabled 且报告已渲染未推送 → 直接返回 push_feishu，不经模型。"""
+    cfg = _feishu_cfg()
+    action = _fc_planner(cfg).next_action(_rendered_state())
+    assert action.type == "tool" and action.tool == "push_feishu"
+
+
+def test_fc_planner_no_guard_when_disabled():
+    """未开启推送时行为不变：守卫不拦截（此时不应返回 push_feishu）。"""
+    cfg = load_config(**{**BASE, "feishu.enabled": False})
+    action = _fc_planner(cfg).next_action(_rendered_state())
+    assert not (action.type == "tool" and action.tool == "push_feishu")

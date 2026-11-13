@@ -9,13 +9,16 @@ from typing import Any, Dict, List
 
 from .base import ToolResult
 
-# 已知版本（精确全名匹配，含项目前缀）
+# 已知版本（精确全名匹配，含项目前缀）；product_name/build 与 live 返回结构对齐（V1 尾账），
+# 使离线链路可覆盖飞书多项目落点路由与参考文档检索分支（两者均以该两字段非空为前提）。
 MOCK_VERSIONS: Dict[str, Dict[str, Any]] = {
     "UniResearch V5.0.0": {
         "name": "UniResearch V5.0.0",
         "description": "科研管理和其他功能增强；全局 Credits 计费改造；历史版本功能回归。",
         "test_start": "2026-09-30",
         "test_end": "2026-10-23",
+        "product_name": "UniResearch",
+        "build": "V5.0.0",
     }
 }
 

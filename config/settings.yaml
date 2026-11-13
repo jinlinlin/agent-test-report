@@ -39,7 +39,7 @@ zentao:
   field_opened_date: "openedDate" # 缺陷创建时间（ISO8601 UTC）；测试起止时间由本版本缺陷该字段的 min/max 实算
   field_opened_by: "openedBy"     # 缺陷提交人（账号）：测试负责人/测试人员由本版本缺陷 openedBy 去重聚合
   field_resolved_by: "resolvedBy" # 缺陷解决人（账号）：软件工程师（开发/运维）由本版本缺陷 resolvedBy 去重聚合
-  field_product_owner: "PO"       # 项目负责人：产品列表“负责人”列对应产品对象的 PO 字段（如 UniResearch→黄运）；若 --probe 显示 PO 是账号而非姓名，需再引 /users 映射
+  field_product_owner: "PO"       # 项目负责人：产品对象 PO 字段；probe 已核实（2026-11-12）PO 为 {id,account,realname} 嵌套对象，渲染层取 realname 姓名，无需 /users 映射
   # 缺陷清单（第 6 节）展示字段（仅用于明细表呈现，不影响统计口径；列表接口缺的字段从单条详情补拉）
   field_title: "title"            # bug 标题
   field_priority: "pri"           # 优先级（禅道键名为 pri，非 priority）

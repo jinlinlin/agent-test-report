@@ -125,6 +125,16 @@ class NativeFCPlanner:
         if state.version_name is None:
             return Action(type="clarify", thought="输入未识别到版本名称，需向用户澄清")
 
+        # 确定性推送守卫：开启飞书推送是用户指令而非模型裁量。
+        # 条件与 loop._push_pending 对齐：已开启 + 报告已生成 + 尚未推送成功且无错误。
+        # 缺少该守卫时，模型可能在 render 后直接返回 finish，导致 --push-feishu 时灵时不灵。
+        fcfg = getattr(self.fallback, "cfg", None)
+        if (fcfg is not None and fcfg.feishu.enabled
+                and state.report_markdown is not None
+                and state.feishu_doc_url is None and not state.feishu_error):
+            return Action(type="tool", tool="push_feishu", args={},
+                          thought="用户已开启飞书推送且尚未完成，确定性执行（非模型裁量）")
+
         try:
             if not self._initialized:
                 self._init_messages(state)
