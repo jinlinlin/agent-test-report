@@ -52,8 +52,9 @@ from report_agent.tools import push_feishu as pf
 def test_section6_inline_note_no_link_no_wide_table():
     stats = _stats([{"id": 1, "status": "active", "resolution": "", "module": "/A", "severity": 3}])
     md = render_report(stats, defect_bitable_inline=True)
-    assert "已展开为下方多维表格" in md
+    assert "缺陷详细见bug清单" in md
     assert "遗留未解决 1 条" in md
+    assert "本次测试共汇总遗留未解决 1 条、延期处理 0 条" in md
     assert "[缺陷清单（多维表格）]" not in md   # 内嵌形态不放链接
     assert "## 6.1" not in md                  # 也不放宽表（章节标题已上调为一级，断言随新口径）
 

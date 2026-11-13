@@ -89,7 +89,6 @@ DEFECT_LIST_NOTE = (
 def defect_bitable_inline_note(postponed_count: int, active_count: int) -> str:
     """第 6 节以文档内嵌多维表格展开时的正文（只给计数与引导，链接与宽表都不写；实际表由推送环节插入）。"""
     return (
-        f"本版本需重点关注的两类缺陷（遗留未解决 {active_count} 条、延期处理 {postponed_count} 条）"
-        "字段较多、重现步骤较长，已展开为下方多维表格（两张带标题的表，字段完整、可筛选/排序）：\n\n"
-        "> 完整缺陷明细仍可在禅道按版本筛选查阅。"
+        f"本次测试共汇总遗留未解决 {active_count} 条、延期处理 {postponed_count} 条，"
+        "缺陷详细见bug清单。完整缺陷明细仍可在禅道按版本筛选查阅。"
     )
