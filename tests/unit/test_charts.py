@@ -2,7 +2,7 @@
 from pathlib import Path
 
 from report_agent.config import load_config
-from report_agent.report.charts import render_charts
+from report_agent.report.charts import render_charts, _pie_pct, _pie_labels
 from report_agent.report.renderer import render_report
 from report_agent.report import templates as T
 from report_agent.tools.render_report import RenderReportTool
@@ -38,6 +38,19 @@ def test_render_charts_zero_bugs_degrades_to_empty(tmp_path):
     stats = compute_statistics({"name": "空版本", "build": "V0", "fetch_status": "ok"}, [])
     assert stats.summary.total == 0
     assert render_charts(stats, tmp_path / "assets") == {}
+
+
+def test_level_pie_hides_small_slice_pct():
+    """小切片百分比防遮挡：低于门槛不画内部百分比，达标照常显示。"""
+    assert _pie_pct(0.8) == "" and _pie_pct(4.9) == ""
+    assert _pie_pct(5.0) == "5.0%" and _pie_pct(18.0) == "18.0%"
+
+
+def test_pie_labels_merge_small_pct_outside():
+    """小切片百分比合并进外侧标签（信息不丢）；达标切片标签只列件数，百分比在切片内部。"""
+    labels = _pie_labels(["P1", "P2", "P3", "P4"], [1, 22, 98, 1])
+    assert labels == ["P1（1 个, 0.8%）", "P2（22 个）", "P3（98 个）", "P4（1 个, 0.8%）"]
+    assert _pie_labels(["P1"], [0]) == ["P1（0 个, 0.0%）"]  # 零总数不除零
 
 
 def test_person_counts_sorted_desc():

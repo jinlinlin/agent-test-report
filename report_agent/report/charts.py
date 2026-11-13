@@ -26,6 +26,26 @@ COLOR_PIE_P2 = COLOR_ACCEPT   # 等级饼图 P2 橙
 COLOR_PIE_P3 = COLOR_MODULE   # 等级饼图 P3 蓝
 COLOR_PIE_P4 = COLOR_CLOSED   # 等级饼图 P4 绿
 
+# 饼图切片内部百分比的显示门槛：小扇区角度窄，相邻小切片的百分比文字会互相遮挡；
+# 低于门槛不画内部百分比，改为合并进外侧标签（见 _pie_labels），信息不丢。
+PIE_PCT_MIN = 5.0
+
+
+def _pie_pct(pct: float) -> str:
+    """饼图 autopct 回调：占比 ≥ 门槛才在切片内部显示百分比，小切片返回空串防遮挡。"""
+    return f"{pct:.1f}%" if pct >= PIE_PCT_MIN else ""
+
+
+def _pie_labels(levels, values):
+    """饼图外侧标签：件数恒显；小切片另把百分比合并进来（内部画不下，外侧按各自角度展开不互遮）。"""
+    total = sum(values)
+    labels = []
+    for level, v in zip(levels, values):
+        pct = v / total * 100 if total else 0.0
+        labels.append(f"{level}（{v} 个）" if pct >= PIE_PCT_MIN
+                      else f"{level}（{v} 个, {pct:.1f}%）")
+    return labels
+
 
 def _setup_pyplot():
     """切换 Agg 后端并配置中文字体；返回 pyplot 模块。异常向上抛由 render_charts 捕获。"""
@@ -106,8 +126,8 @@ def _level_pie(plt, stats: StatsResult, out: Path, dpi: int) -> None:
     rows = [r for r in sorted(stats.level_status_distribution, key=lambda r: r.level) if r.total > 0]
     if not rows:
         raise ValueError("无等级分布数据")
-    labels = [f"{r.level}（{r.total} 个）" for r in rows]
     values = [r.total for r in rows]
+    labels = _pie_labels([r.level for r in rows], values)
     palette = [COLOR_PIE_P1, COLOR_PIE_P2, COLOR_PIE_P3, COLOR_PIE_P4]  # P1粉 P2橙 P3蓝 P4绿
     fig, ax = plt.subplots(figsize=(6.4, 4.6))
     # 等级数超出预设四色时循环取色，避免 colors/values 长度不匹配导致整图静默丢失
@@ -116,7 +136,7 @@ def _level_pie(plt, stats: StatsResult, out: Path, dpi: int) -> None:
         values,
         labels=labels,
         colors=colors,
-        autopct=lambda pct: f"{pct:.1f}%",
+        autopct=_pie_pct,
         startangle=90,
         counterclock=False,
         wedgeprops={"edgecolor": "white", "linewidth": 1.2},  # 白边分隔，防浅色扇区粘连
