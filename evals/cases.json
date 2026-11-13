@@ -1,0 +1,91 @@
+{
+  "_comment": "V2-8 回归评测集金标准。期望值均为 V1 基线代码在 mock 模式下的真实产出（拍照冻结，非人工推算）。用途：V2 任何功能合入前必须全绿，防止改动破坏已跑通的统计/准入结论链路。§9 仓库卫生：本文件仅存 mock 模式期望值，不含 live 内部数字。",
+  "base_overrides": {
+    "zentao.mode": "mock",
+    "llm.use_native_fc": false,
+    "trace.enabled": false,
+    "feishu.enabled": false,
+    "report.polish_conclusion": false,
+    "charts.enabled": false
+  },
+  "cases": [
+    {
+      "id": "V5.0.0-P2超标暂缓",
+      "input": "帮我生成 UniResearch V5.0.0 的测试报告",
+      "fault": "none",
+      "expect": {
+        "status": "finished",
+        "version_name": "UniResearch V5.0.0",
+        "total": 24,
+        "closed": 15,
+        "pending_resolve": 4,
+        "pending_accept": 3,
+        "postponed": 2,
+        "fix_coverage": "62.50%",
+        "p1_pass": true,
+        "p2_pass": false,
+        "p3_pass": true,
+        "advice_contains": "P2 激活占比"
+      }
+    },
+    {
+      "id": "V6.0.0-全关闭达标可发布",
+      "input": "帮我生成 UniResearch V6.0.0 的测试报告",
+      "fault": "none",
+      "expect": {
+        "status": "finished",
+        "version_name": "UniResearch V6.0.0",
+        "total": 5,
+        "closed": 5,
+        "pending_resolve": 0,
+        "pending_accept": 0,
+        "postponed": 0,
+        "fix_coverage": "100.00%",
+        "p1_pass": true,
+        "p2_pass": true,
+        "p3_pass": true,
+        "advice_contains": "各项准入指标均达标"
+      }
+    },
+    {
+      "id": "V6.1.0-激活P1直接否决",
+      "input": "帮我生成 UniResearch V6.1.0 的测试报告",
+      "fault": "none",
+      "expect": {
+        "status": "finished",
+        "version_name": "UniResearch V6.1.0",
+        "total": 3,
+        "closed": 1,
+        "pending_resolve": 1,
+        "pending_accept": 1,
+        "postponed": 0,
+        "fix_coverage": "33.33%",
+        "p1_pass": false,
+        "p2_pass": true,
+        "p3_pass": true,
+        "advice_contains": "P1 存在 1 个激活缺陷"
+      }
+    },
+    {
+      "id": "empty_bugs-零缺陷按发布",
+      "input": "UniResearch V5.0.0",
+      "fault": "empty_bugs",
+      "expect": {
+        "status": "finished",
+        "total": 0,
+        "closed": 0,
+        "advice_contains": "本版本未发现缺陷"
+      }
+    },
+    {
+      "id": "not_found-版本不存在失败",
+      "input": "UniResearch V9.9.9",
+      "fault": "not_found",
+      "expect": {
+        "status": "failed",
+        "no_stats": true,
+        "report_contains": "测试报告（生成失败"
+      }
+    }
+  ]
+}

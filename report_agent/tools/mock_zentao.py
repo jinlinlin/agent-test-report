@@ -19,7 +19,25 @@ MOCK_VERSIONS: Dict[str, Dict[str, Any]] = {
         "test_end": "2026-10-23",
         "product_name": "UniResearch",
         "build": "V5.0.0",
-    }
+    },
+    # V2-8 回归评测集补充版本（覆盖发布准入的另两条结论分支，见 evals/）：
+    # V6.0.0 全部已关闭 → 「均达标可发布」分支；V6.1.0 存在激活 P1 → 「P1 否决」分支。
+    "UniResearch V6.0.0": {
+        "name": "UniResearch V6.0.0",
+        "description": "评测基准版本（全关闭，用于钉死达标可发布分支）。",
+        "test_start": "2026-10-01",
+        "test_end": "2026-10-20",
+        "product_name": "UniResearch",
+        "build": "V6.0.0",
+    },
+    "UniResearch V6.1.0": {
+        "name": "UniResearch V6.1.0",
+        "description": "评测基准版本（含激活 P1，用于钉死 P1 否决分支）。",
+        "test_start": "2026-10-25",
+        "test_end": "2026-11-10",
+        "product_name": "UniResearch",
+        "build": "V6.1.0",
+    },
 }
 
 
@@ -71,7 +89,21 @@ MOCK_BUGS: Dict[str, List[Dict[str, Any]]] = {
         _bug(22, "/ 任务管理", 3, "closed", "fixed", 0, "tester_c", "dev_wang"),
         _bug(23, "/ 任务管理", 4, "resolved", "postponed", 0, "tester_a", ""),
         _bug(24, "/ 公共模块", 3, "closed", "duplicate", 0, "tester_b", "dev_zhao"),
-    ]
+    ],
+    # V6.0.0：全部已关闭（fixed/willnotfix/duplicate 均算已关闭），无任何激活 → 达标可发布分支
+    "UniResearch V6.0.0": [
+        _bug(1, "/ 科研管理 / 课题管理", 1, "closed", "fixed", 0, "tester_a", "dev_li"),
+        _bug(2, "/ 科研管理 / 成果管理", 2, "closed", "fixed", 1, "tester_b", "dev_wang"),
+        _bug(3, "/ 文献管理", 3, "closed", "fixed", 0, "tester_c", "dev_zhao"),
+        _bug(4, "/ 知识库", 4, "closed", "willnotfix", 0, "tester_a", "dev_li"),
+        _bug(5, "/ 任务管理", 3, "closed", "duplicate", 0, "tester_b", "dev_wang"),
+    ],
+    # V6.1.0：含 1 条激活 P1（status=active severity=1）→ p1_pass=False，P1 直接否决分支
+    "UniResearch V6.1.0": [
+        _bug(1, "/ 登录注册", 1, "active", "", 2, "tester_a", ""),
+        _bug(2, "/ 科研实验", 2, "closed", "fixed", 0, "tester_b", "dev_wang"),
+        _bug(3, "/ 文献管理", 3, "resolved", "fixed", 0, "tester_c", "dev_li"),
+    ],
 }
 
 
