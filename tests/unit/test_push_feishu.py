@@ -13,7 +13,7 @@ from report_agent.config import load_config
 from report_agent.llm.client import LLMClient
 from report_agent.main import build_registry
 from report_agent.tools.base import Tool, ToolResult
-from report_agent.tools.push_feishu import PushFeishuTool
+from report_agent.tools.push_feishu import PushFeishuTool, _doc_name
 from report_agent.tools.feishu_client import FeishuClient
 from report_agent.trace.tracer import Tracer
 
@@ -28,6 +28,14 @@ def test_disabled_returns_error():
     cfg = load_config(**{**BASE, "feishu.enabled": False})
     res = PushFeishuTool(cfg).run(report_markdown="# x", version_name="UniResearch V5.0.0")
     assert res.ok is False and "未启用" in res.error
+
+
+def test_doc_name_prefers_authoritative_product_build():
+    # 权威产品名+版本号优先：自然语言里的“帮我生成…”等噪音不再进文档名
+    assert _doc_name("UniResearch", "V5.1.0", "帮我生成UniResearch V5.1.0") == "UniResearch_V5.1.0_测试报告"
+    # 权威信息缺失才回退抽取的版本全名（旧行为逐字保留）
+    assert _doc_name("", "", "UniResearch V5.0.0") == "UniResearch_V5.0.0_测试报告"
+    assert _doc_name("", "", "") == "report_测试报告"
 
 
 def test_missing_credential():

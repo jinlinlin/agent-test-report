@@ -75,14 +75,17 @@ def run_once(user_input: str, **overrides) -> tuple[Path | None, Path | None, st
     agent, tracer = build_agent(cfg, ask=(_terminal_ask if need_ask else None))
     state = agent.run(user_input)
 
-    # 落盘报告
+    # 落盘报告：名称优先取数环节确认的权威产品名+版本号（与飞书文档名同口径），
+    # 避免“帮我生成…”等输入噪音进入文件名；version_info 缺失才回退 version_name。
     cfg.report_dir.mkdir(parents=True, exist_ok=True)
-    report_path = cfg.report_dir / f"{_safe_name(state.version_name or 'report')}_测试报告.md"
+    vi = state.version_info or {}
+    display = f"{vi.get('product_name', '')} {vi.get('build', '')}".strip() or state.version_name or "report"
+    report_path = cfg.report_dir / f"{_safe_name(display)}_测试报告.md"
     if state.report_markdown:
         report_path.write_text(state.report_markdown, encoding="utf-8")
 
     # 落盘 Trace
-    trace_path = tracer.save(f"{_safe_name(state.version_name or 'report')}.json")
+    trace_path = tracer.save(f"{_safe_name(display)}.json")
 
     return report_path, trace_path, state.status, state.feishu_doc_url
 

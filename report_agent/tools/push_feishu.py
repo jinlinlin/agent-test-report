@@ -12,9 +12,11 @@ from .feishu_client import FeishuClient, FeishuError
 from ..report.docx_export import md_to_docx_bytes
 
 
-def _doc_name(version_name: str) -> str:
-    base = (version_name or "report").strip()
-    safe = "".join(ch if ch.isalnum() or ch in "._-" else "_" for ch in base)
+def _doc_name(product_name: str = "", build: str = "", version_name: str = "") -> str:
+    """飞书文档名：优先用取数环节确认的权威产品名+版本号拼凑（干净稳定）；
+    缺失时才回退自然语言抽取的版本全名（VERSION_PATTERN 前缀组会吞进“帮我生成”等输入噪音）。"""
+    base = (f"{product_name} {build}" if product_name and build else (version_name or product_name)).strip()
+    safe = "".join(ch if ch.isalnum() or ch in "._-" else "_" for ch in (base or "report"))
     return f"{safe or 'report'}_测试报告"
 
 
@@ -44,7 +46,7 @@ class PushFeishuTool(Tool):
             return ToolResult(ok=False, error="知识库模式需配置落点节点（FEISHU_WIKI_PROJECTS_PARENT 或 FEISHU_WIKI_PARENT_NODE）")
 
         client = FeishuClient(f)
-        name = _doc_name(version_name or product_name)
+        name = _doc_name(product_name, build, version_name)
         try:
             client.get_tenant_token()
             # 优先本地 md→docx（pandoc 将相对路径图表内嵌进 docx，飞书导入才不丢图）；
