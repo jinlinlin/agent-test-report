@@ -36,11 +36,15 @@ class RenderReportTool(Tool):
         embed = self._defect_embed_mode(stats_obj)
         markdown = render_report(stats_obj, charts=charts, ref_links=ref_links,
                                  defect_bitable_inline=embed, test_scope=test_scope, test_env=test_env)
-        return ToolResult(ok=True, data=markdown,
-                          meta={"ref_doc_links": ref_links, "defect_bitable_embed": embed,
-                                "test_scope_filled": bool(test_scope),
-                                "test_env_filled": bool(test_env and test_env.get("rows")),
-                                "doc_index_filled": bool(doc_index)})
+        meta = {"ref_doc_links": ref_links, "defect_bitable_embed": embed,
+                "test_scope_filled": bool(test_scope),
+                "test_env_filled": bool(test_env and test_env.get("rows")),
+                "doc_index_filled": bool(doc_index)}
+        # V2-7 报告数字自检：默认关，开启时对渲染结果二次核对，不一致按统计源值重渲染并标注。
+        if self.cfg is not None and getattr(getattr(self.cfg, "report", None), "numeric_selfcheck", False):
+            from ..report import numeric_selfcheck
+            markdown, meta["numeric_selfcheck"] = numeric_selfcheck.apply(markdown, stats_obj)
+        return ToolResult(ok=True, data=markdown, meta=meta)
 
     def _defect_embed_mode(self, stats_obj) -> bool:
         """第 6 节是否走 C（文档内嵌多维表格）：飞书启用 + 开 defect_bitable + 开 defect_bitable_embed + 有缺陷行。

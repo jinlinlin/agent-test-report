@@ -35,7 +35,8 @@ agent-test-report/
 │   ├── rules/release_engine.py#   F8 发布建议规则引擎（确定性判定）
 │   ├── report/                #   报告层
 │   │   ├── templates.py       #     固定文案 + 占位符
-│   │   └── renderer.py        #     Markdown 渲染（数据→模板，含失败/超限版）
+│   │   ├── renderer.py        #     Markdown 渲染（数据→模板，含失败/超限版）
+│   │   └── numeric_selfcheck.py #   V2-7 报告数字自检（渲染后二次核对，不一致按源值重渲染+标注，默认关）
 │   ├── schemas/contracts.py   #   第 7 章统计工具输出 JSON 契约
 │   └── trace/tracer.py        #   Trace 逐轮记录与落盘
 ├── tests/
@@ -178,6 +179,7 @@ python -m report_agent.main "帮我生成 一表通项目 理工1.0.0 的测试�
 1. 在 `config/.env` 填 `OPENAI_API_KEY`（OpenAI 兼容端点在 `settings.yaml` 的 `llm.base_url` 配置）。
 2. `llm.use_native_fc: true` 且存在 API Key 时，规划器使用原生 Function Calling 协议（模型自主决定工具调用顺序）；否则回退确定性规划，保证链路可离线复现。
 3. `report.polish_conclusion: true`（默认关）时，5.1 发布建议在渲染前由模型润色：数字只能原样引用统计输入材料，新增/丢失数字一律回退模板原文（F17，验收 A9）。
+4. `report.numeric_selfcheck: true`（默认关，CLI `--selfcheck`）时，渲染完成后对报告做确定性二次核对：4.1/4.2 正文句与统计源值不一致则按源值重渲染，关键聚合量/结论依据数字缺失则在顶部标注（V2-7，不依赖 LLM）。
 
 ## 发布准入标准（F8）
 

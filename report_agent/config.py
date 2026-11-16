@@ -113,6 +113,7 @@ class TraceConfig:
 class ReportConfig:
     output_dir: str = "output"
     polish_conclusion: bool = False  # F17：开启后 5.1 发布建议由 LLM 润色（带数字一致性校验，校验失败回退模板原文）
+    numeric_selfcheck: bool = False  # V2-7：开启后渲染完成再二次核对报告数字，不一致按统计源值重渲染并标注
 
 
 @dataclass
@@ -286,6 +287,7 @@ def load_config(settings_path: Path | str = SETTINGS_PATH, **overrides) -> Confi
         report=ReportConfig(
             output_dir=_get(_get(raw, "report", {}), "output_dir", "output"),
             polish_conclusion=str(_get(_get(raw, "report", {}), "polish_conclusion", False)).lower() in ("1", "true", "yes", "on"),
+            numeric_selfcheck=str(_get(_get(raw, "report", {}), "numeric_selfcheck", False)).lower() in ("1", "true", "yes", "on"),
         ),
         charts=ChartsConfig(
             enabled=_get(_get(raw, "charts", {}), "enabled", True),

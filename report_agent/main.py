@@ -158,6 +158,8 @@ def main(argv=None) -> int:
                         help="生成后将报告推送至飞书云文档/知识库（需先在 .env 配好飞书凭据与 token）")
     parser.add_argument("--polish", action="store_true",
                         help="开启 F17 结论段 LLM 润色（覆盖 report.polish_conclusion；数字不一致自动回退模板）")
+    parser.add_argument("--selfcheck", action="store_true",
+                        help="开启 V2-7 报告数字自检（覆盖 report.numeric_selfcheck；渲染后二次核对，不一致按统计源值重渲染并顶部标注）")
     parser.add_argument("--interactive-clarify", action="store_true", dest="interactive_clarify",
                         help="开启 V2-1 模糊输入交互澄清（覆盖 agent.interactive_clarify；歧义时列候选并终端反问）")
     parser.add_argument("--llm-intent-fallback", action="store_true", dest="llm_intent_fallback",
@@ -183,6 +185,8 @@ def main(argv=None) -> int:
         overrides["feishu.enabled"] = True
     if args.polish:
         overrides["report.polish_conclusion"] = True
+    if args.selfcheck:
+        overrides["report.numeric_selfcheck"] = True
     if args.interactive_clarify:
         overrides["agent.interactive_clarify"] = True
     if args.llm_intent_fallback:
