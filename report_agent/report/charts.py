@@ -36,6 +36,13 @@ def _pie_pct(pct: float) -> str:
     return f"{pct:.1f}%" if pct >= PIE_PCT_MIN else ""
 
 
+def _filter_nonzero(items):
+    """剔除数值为 0 的图表项（用户 2026-11-16 要求：数据值为 0 时不显示该图表项）。
+
+    items 为 (名称, 数值, 颜色) 三元组列表，保序返回数值 > 0 的项。"""
+    return [it for it in items if it[1] > 0]
+
+
 def _pie_labels(levels, values):
     """饼图外侧标签：件数恒显；小切片另把百分比合并进来（内部画不下，外侧按各自角度展开不互遮）。"""
     total = sum(values)
@@ -64,11 +71,21 @@ def _setup_pyplot():
 
 
 def _status_bar(plt, stats: StatsResult, out: Path, dpi: int) -> None:
-    """4.1 缺陷状态分布：垂直条形柱状图（四状态各自浅色，顶部标件数与占比）。"""
+    """4.1 缺陷状态分布：垂直条形柱状图（四状态各自浅色，顶部标件数与占比）。
+
+    件数为 0 的状态不绘制该项（与 4.2/4.5 同口径，图表隐藏 0 值项）。"""
     s = stats.summary
-    labels = ["已关闭", "待解决", "待验收", "延期"]
-    values = [s.closed, s.pending_resolve, s.pending_accept, s.postponed]
-    colors = [COLOR_CLOSED, COLOR_ACTIVE, COLOR_ACCEPT, COLOR_POSTPONE]
+    items = _filter_nonzero([
+        ("已关闭", s.closed, COLOR_CLOSED),
+        ("待解决", s.pending_resolve, COLOR_ACTIVE),
+        ("待验收", s.pending_accept, COLOR_ACCEPT),
+        ("延期", s.postponed, COLOR_POSTPONE),
+    ])
+    if not items:
+        raise ValueError("无状态分布数据")
+    labels = [it[0] for it in items]
+    values = [it[1] for it in items]
+    colors = [it[2] for it in items]
     total = sum(values)
     fig, ax = plt.subplots(figsize=(6.4, 4.6))
     bars = ax.bar(labels, values, color=colors, width=0.55)
@@ -110,15 +127,19 @@ def _activated_bar(plt, stats: StatsResult, out: Path, dpi: int) -> None:
     dist = s.activated_dist
     if not dist:
         raise ValueError("无激活次数分布数据")
-    # _hbar 首元素画在底部，整体反转后 0 次落在顶部
-    pairs = [
+    # 数值（缺陷个数）为 0 的档不绘制（如截图 3~7 次各 0 个）；0 次档若缺陷数 >0 仍保留
+    buckets = _filter_nonzero([
         (f"{b.times} 次", b.total, COLOR_NOT_ACTIVATED if b.times == 0 else COLOR_ACTIVE)
         for b in dist
-    ][::-1]
+    ])
+    if not buckets:
+        raise ValueError("无激活次数分布数据")
+    # _hbar 首元素画在底部，整体反转后 0 次落在顶部
+    pairs = buckets[::-1]
     _hbar(plt, [p[0] for p in pairs], [p[1] for p in pairs], [p[2] for p in pairs],
           out, dpi,
           "Bug 激活次数分布",
-          lambda v: f"{v} 个", "缺陷数", (7.2, max(3.2, 0.55 * len(dist) + 1.2)))
+          lambda v: f"{v} 个", "缺陷数", (7.2, max(3.2, 0.55 * len(buckets) + 1.2)))
 
 
 def _level_pie(plt, stats: StatsResult, out: Path, dpi: int) -> None:

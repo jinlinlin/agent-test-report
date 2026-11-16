@@ -2,7 +2,7 @@
 from pathlib import Path
 
 from report_agent.config import load_config
-from report_agent.report.charts import render_charts, _pie_pct, _pie_labels
+from report_agent.report.charts import render_charts, _pie_pct, _pie_labels, _filter_nonzero
 from report_agent.report.renderer import render_report
 from report_agent.report import templates as T
 from report_agent.tools.render_report import RenderReportTool
@@ -38,6 +38,27 @@ def test_render_charts_zero_bugs_degrades_to_empty(tmp_path):
     stats = compute_statistics({"name": "空版本", "build": "V0", "fetch_status": "ok"}, [])
     assert stats.summary.total == 0
     assert render_charts(stats, tmp_path / "assets") == {}
+
+
+def test_filter_nonzero_drops_zero_value_items():
+    """图表 0 值项过滤：数值为 0 的项剔除、保序，0 次档（个数>0）不误删。"""
+    items = [("0 次", 292, "g"), ("3 次", 0, "p"), ("4 次", 0, "p"), ("1 次", 44, "p")]
+    assert _filter_nonzero(items) == [("0 次", 292, "g"), ("1 次", 44, "p")]
+    # 全 0 → 空（上层据此抛 ValueError 跳过该图，不画空图）
+    assert _filter_nonzero([("延期", 0, "c")]) == []
+
+
+def test_activated_bar_with_interior_zero_buckets_still_renders(tmp_path):
+    """激活次数含中间 0 值档（如 1 次 0 个）时图仍正常产出，0 值档不绘制不致丢图。"""
+    bugs = [
+        _bug("/A", 3, "closed", activated=0), _bug("/A", 3, "closed", activated=0),
+        _bug("/B", 3, "active", activated=2),  # 2 次，中间 1 次无缺陷→ activated_dist 含 1 次=0
+    ]
+    st = compute_statistics({"name": "Z", "build": "V1", "fetch_status": "ok"}, bugs)
+    totals = [b.total for b in st.summary.activated_dist]
+    assert 0 in totals  # 确认存在 0 值中间档
+    out = render_charts(st, tmp_path / "assets")
+    assert "activated_bar" in out and Path(out["activated_bar"]).stat().st_size > 1000
 
 
 def test_level_pie_hides_small_slice_pct():
