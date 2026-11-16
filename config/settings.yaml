@@ -39,6 +39,7 @@ zentao:
   field_activated: "activatedCount"
   field_build: "openedBuild"      # 影响版本：禅道把“版本”建模为缺陷的 openedBuild（如 V5.0.0，可逗号多版本）
   field_opened_date: "openedDate" # 缺陷创建时间（ISO8601 UTC）；测试起止时间由本版本缺陷该字段的 min/max 实算
+  field_closed_date: "closedDate" # 缺陷关闭时间（V2-6 关闭事件归属；列表接口缺失时从单条详情补拉，可 --probe 核实）
   field_opened_by: "openedBy"     # 缺陷提交人（账号）：测试负责人/测试人员由本版本缺陷 openedBy 去重聚合
   field_resolved_by: "resolvedBy" # 缺陷解决人（账号）：软件工程师（开发/运维）由本版本缺陷 resolvedBy 去重聚合
   field_product_owner: "PO"       # 项目负责人：产品对象 PO 字段；probe 已核实（2026-11-12）PO 为 {id,account,realname} 嵌套对象，渲染层取 realname 姓名，无需 /users 映射
@@ -94,6 +95,10 @@ report:
   polish_conclusion: false
   # V2-7 报告数字自检：渲染完成后再二次核对报告数字∈统计源值，不一致按源值重渲染并在顶部标注；默认关
   numeric_selfcheck: false
+  # V2-6 缺陷关闭构成：4.1.2 按版本归属呈现 本版本关闭（= 4.1 已关闭数）＋ 本周期协助关闭的其他版本缺陷，合计为总关闭。
+  # 协助关闭不计入缺陷总数、修复覆盖率与发布准入。
+  # 代码默认关（关时报告与现状逐字一致）；此处生产配置默认开，改回 false 或 CLI 不加参数即关
+  closure_breakdown: true
 
 charts:
   # matplotlib 本地生成图表（状态条形柱状图/激活次数与每人提交解决水平柱状图/等级饼图；4.1.1 模块分布仅表格不出图）到 output/assets/<版本>/，

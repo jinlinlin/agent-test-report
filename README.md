@@ -180,6 +180,7 @@ python -m report_agent.main "帮我生成 一表通项目 理工1.0.0 的测试�
 2. `llm.use_native_fc: true` 且存在 API Key 时，规划器使用原生 Function Calling 协议（模型自主决定工具调用顺序）；否则回退确定性规划，保证链路可离线复现。
 3. `report.polish_conclusion: true`（默认关）时，5.1 发布建议在渲染前由模型润色：数字只能原样引用统计输入材料，新增/丢失数字一律回退模板原文（F17，验收 A9）。
 4. `report.numeric_selfcheck: true`（默认关，CLI `--selfcheck`）时，渲染完成后对报告做确定性二次核对：4.1/4.2 正文句与统计源值不一致则按源值重渲染，关键聚合量/结论依据数字缺失则在顶部标注（V2-7，不依赖 LLM）。
+5. `report.closure_breakdown`（代码默认关、生产配置默认开，CLI `--closure-breakdown`）时，4.1.2 按版本归属呈现关闭构成：本版本关闭（= 4.1 已关闭数，快照口径整块不拆）＋ 本周期协助关闭的其他版本缺陷（closedDate 落在测试窗口内且 openedBuild 不含本版本，取数层从全产品缺陷筛出 slim 列表交统计层），合计为总关闭；协助关闭不计入缺陷总数、修复覆盖率与发布准入；协助关闭为 0 时整节 4.1.2 不显示（无构成可拆）（V2-6）。
 
 ## 发布准入标准（F8）
 

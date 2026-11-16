@@ -56,6 +56,7 @@ class ZentaoConfig:
     field_activated: str = "activatedCount"
     field_build: str = "openedBuild"   # 影响版本字段（禅道将版本建模为缺陷的 openedBuild）
     field_opened_date: str = "openedDate"  # 缺陷创建时间字段（用于实算测试起止时间）
+    field_closed_date: str = "closedDate"  # 缺陷关闭时间字段（V2-6 关闭事件归属用；列表接口缺失时从单条详情补拉）
     field_opened_by: str = "openedBy"      # 缺陷提交人（测试人员/测试负责人来源）
     field_resolved_by: str = "resolvedBy"  # 缺陷解决人（软件工程师来源）
     field_product_owner: str = ""          # 项目负责人在产品对象上的字段名（留空则不取、标待补充；用 --probe 核对后填 PO/PM 等）
@@ -114,6 +115,7 @@ class ReportConfig:
     output_dir: str = "output"
     polish_conclusion: bool = False  # F17：开启后 5.1 发布建议由 LLM 润色（带数字一致性校验，校验失败回退模板原文）
     numeric_selfcheck: bool = False  # V2-7：开启后渲染完成再二次核对报告数字，不一致按统计源值重渲染并标注
+    closure_breakdown: bool = False  # V2-6：开启后 4.1.2 呈现缺陷关闭构成（本周期关闭/历史补关/无法判定）；仅展示层拆分，不改快照口径与准入
 
 
 @dataclass
@@ -249,6 +251,7 @@ def load_config(settings_path: Path | str = SETTINGS_PATH, **overrides) -> Confi
             field_activated=_get(_get(raw, "zentao", {}), "field_activated", "activatedCount"),
             field_build=_get(_get(raw, "zentao", {}), "field_build", "openedBuild"),
             field_opened_date=_get(_get(raw, "zentao", {}), "field_opened_date", "openedDate"),
+            field_closed_date=_get(_get(raw, "zentao", {}), "field_closed_date", "closedDate"),
             field_opened_by=_get(_get(raw, "zentao", {}), "field_opened_by", "openedBy"),
             field_resolved_by=_get(_get(raw, "zentao", {}), "field_resolved_by", "resolvedBy"),
             field_product_owner=os.getenv("ZENTAO_FIELD_PRODUCT_OWNER", "") or _get(_get(raw, "zentao", {}), "field_product_owner", ""),
@@ -288,6 +291,7 @@ def load_config(settings_path: Path | str = SETTINGS_PATH, **overrides) -> Confi
             output_dir=_get(_get(raw, "report", {}), "output_dir", "output"),
             polish_conclusion=str(_get(_get(raw, "report", {}), "polish_conclusion", False)).lower() in ("1", "true", "yes", "on"),
             numeric_selfcheck=str(_get(_get(raw, "report", {}), "numeric_selfcheck", False)).lower() in ("1", "true", "yes", "on"),
+            closure_breakdown=str(_get(_get(raw, "report", {}), "closure_breakdown", False)).lower() in ("1", "true", "yes", "on"),
         ),
         charts=ChartsConfig(
             enabled=_get(_get(raw, "charts", {}), "enabled", True),

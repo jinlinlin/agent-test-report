@@ -17,6 +17,9 @@ class AgentState:
     plan: List[str] = field(default_factory=list)
     version_info: Optional[Dict[str, Any]] = None
     bugs: Optional[List[Dict[str, Any]]] = None
+    # V2-6 协助关闭 slim 列表（同产品其他版本已关闭缺陷，只带 id/status/closedDate/openedBuild）；
+    # 取数层从全产品原始缺陷筛出，经 meta 交统计层计 closed_other_versions，不进 Trace 快照。
+    closed_other_bugs: List[Dict[str, Any]] = field(default_factory=list)
     stats: Optional[Dict[str, Any]] = None
     stats_obj: Optional[Any] = None          # StatsResult 对象，供渲染直接使用
     conclusion_polished: bool = False        # F17：润色工具已执行标记（防规划器重复调用）
@@ -38,6 +41,7 @@ class AgentState:
             "version_name": self.version_name,
             "has_version_info": self.version_info is not None,
             "bugs_count": len(self.bugs) if self.bugs is not None else None,
+            "closed_other_bugs_count": len(self.closed_other_bugs),
             "has_stats": self.stats is not None,
             "conclusion_polished": self.conclusion_polished,
             "has_report": self.report_markdown is not None,

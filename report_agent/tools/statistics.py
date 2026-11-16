@@ -68,8 +68,9 @@ def _pct(numerator: int, denominator: int) -> str:
     return f"{round(numerator / denominator * 100, 2):.2f}%"
 
 
-# 缺陷创建时间（zentao_bugs 规范化时写入的内部键）与北京时区
+# 缺陷创建/关闭时间（zentao_bugs 规范化时写入的内部键）与北京时区
 _OPENED_DATE_KEY = "openedDate"
+_CLOSED_DATE_KEY = "closedDate"
 _CN_TZ = timezone(timedelta(hours=8))
 _NULLISH = {"", "null", "none", "0000-00-00 00:00:00", "0000-00-00"}
 
@@ -104,6 +105,26 @@ def _build_exact(value: Any, build: str) -> bool:
     if not build:
         return True
     return str(value or "").strip().lower() == str(build).strip().lower()
+
+
+def _window_dates(start_str: str, end_str: str) -> tuple:
+    """V2-6 测试起止窗口（北京时间 date）；任一侧缺失/不可解析返回 (None, None)。"""
+    a, b = _parse_dt(start_str), _parse_dt(end_str)
+    if a is None or b is None:
+        return None, None
+    return a.astimezone(_CN_TZ).date(), b.astimezone(_CN_TZ).date()
+
+
+def _classify_closure(bug: Dict[str, Any], win: tuple) -> str:
+    """V2-6 关闭事件是否落在测试窗口内（不改四桶判定，仅用于协助关闭归属计数）：
+    this_cycle=关闭时刻在窗口内；history=有关闭时刻但在窗口外；
+    unknown=关闭时刻缺失/不可解析，或测试窗口未知（如实呈现不猜测）。"""
+    lo, hi = win
+    dt = _parse_dt(bug.get(_CLOSED_DATE_KEY))
+    if lo is None or dt is None:
+        return "unknown"
+    d = dt.astimezone(_CN_TZ).date()
+    return "this_cycle" if lo <= d <= hi else "history"
 
 
 def opened_date_range(bugs: List[Dict[str, Any]], target_build: str = "") -> tuple:
@@ -196,12 +217,17 @@ def collect_defect_lists(bugs: List[Dict[str, Any]]) -> tuple:
     return active_rows, postponed_rows
 
 
-def compute_statistics(version_info: Dict[str, Any] | None, bugs: List[Dict[str, Any]] | None) -> StatsResult:
+def compute_statistics(
+    version_info: Dict[str, Any] | None,
+    bugs: List[Dict[str, Any]] | None,
+    closed_other_bugs: List[Dict[str, Any]] | None = None,
+) -> StatsResult:
     bugs = bugs or []
     version_info = version_info or {}
 
     vi = VersionInfo(
         name=version_info.get("name", ""),
+        build=version_info.get("build", ""),
         description=version_info.get("description", ""),
         test_start=version_info.get("test_start", ""),
         test_end=version_info.get("test_end", ""),
@@ -213,6 +239,13 @@ def compute_statistics(version_info: Dict[str, Any] | None, bugs: List[Dict[str,
     start, end = opened_date_range(bugs, version_info.get("build") or "")
     if start and end:
         vi.test_start, vi.test_end = start, end
+    # V2-6 关闭事件归属的验证窗口：取最终确定的测试起止（实算优先，否则配置兑底）
+    closure_win = _window_dates(vi.test_start, vi.test_end)
+    # V2-6 协助关闭：同产品其他版本已关闭缺陷中，关闭时刻落在本窗口内的件数
+    # （只计数不进总数/覆盖率/准入；无窗口或无关闭时刻自然不计）
+    closed_other_versions = sum(
+        1 for b in (closed_other_bugs or []) if _classify_closure(b, closure_win) == "this_cycle"
+    )
 
     total = len(bugs)
     bucket_total = {b: 0 for b in BUCKETS}
@@ -272,6 +305,7 @@ def compute_statistics(version_info: Dict[str, Any] | None, bugs: List[Dict[str,
         activated_ge1_count=activated_ge1,
         activated_rate=_pct(activated_ge1, total),
         activated_dist=activated_dist,
+        closed_other_versions=closed_other_versions,
     )
 
     module_distribution = sorted(module_map.values(), key=lambda m: m.total, reverse=True)
@@ -317,8 +351,9 @@ def compute_statistics(version_info: Dict[str, Any] | None, bugs: List[Dict[str,
 class ComputeStatisticsTool(Tool):
     name = "compute_statistics"
     description = "对已获取的缺陷明细执行独立统计，输出结构化指标（总量/状态/模块/等级/覆盖率）与发布准入结论。由循环注入 version_info 与 bugs。"
-    parameters = {"version_info": "object(注入)", "bugs": "array(注入)"}
+    parameters = {"version_info": "object(注入)", "bugs": "array(注入)", "closed_other_bugs": "array(注入)"}
 
-    def run(self, version_info: Dict[str, Any] | None = None, bugs: List[Dict[str, Any]] | None = None, **kwargs) -> ToolResult:
-        result = compute_statistics(version_info, bugs)
+    def run(self, version_info: Dict[str, Any] | None = None, bugs: List[Dict[str, Any]] | None = None,
+            closed_other_bugs: List[Dict[str, Any]] | None = None, **kwargs) -> ToolResult:
+        result = compute_statistics(version_info, bugs, closed_other_bugs)
         return ToolResult(ok=True, data=result.to_dict(), meta={"stats_obj": result})

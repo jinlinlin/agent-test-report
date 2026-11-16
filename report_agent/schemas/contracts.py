@@ -11,6 +11,7 @@ from typing import Any, Dict, List
 @dataclass
 class VersionInfo:
     name: str = ""
+    build: str = ""                # 版本 token（如 V5.1.0），用于表格简洁引用
     description: str = ""
     test_start: str = ""
     test_end: str = ""
@@ -35,6 +36,8 @@ class Summary:
     activated_ge1_count: int = 0
     activated_rate: str = "0.00%"
     activated_dist: List[ActivatedBucket] = field(default_factory=list)  # 4.2 逐档分布（按激活次数）
+    # V2-6 协助关闭：closedDate 落在测试窗口内且 openedBuild 不含本版本（不计入总数/覆盖率/准入）
+    closed_other_versions: int = 0
 
 
 @dataclass

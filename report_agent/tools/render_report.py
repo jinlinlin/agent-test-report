@@ -34,12 +34,16 @@ class RenderReportTool(Tool):
         test_scope = self._resolve_test_scope(product_name, build)
         test_env = self._resolve_test_env(product_name)
         embed = self._defect_embed_mode(stats_obj)
+        # V2-6 关闭构成展示开关（默认关；关时 4.1.2 整节不出现，渲染与现状逐字一致）
+        closure = bool(self.cfg is not None and getattr(getattr(self.cfg, "report", None), "closure_breakdown", False))
         markdown = render_report(stats_obj, charts=charts, ref_links=ref_links,
-                                 defect_bitable_inline=embed, test_scope=test_scope, test_env=test_env)
+                                 defect_bitable_inline=embed, test_scope=test_scope, test_env=test_env,
+                                 closure_breakdown=closure)
         meta = {"ref_doc_links": ref_links, "defect_bitable_embed": embed,
                 "test_scope_filled": bool(test_scope),
                 "test_env_filled": bool(test_env and test_env.get("rows")),
-                "doc_index_filled": bool(doc_index)}
+                "doc_index_filled": bool(doc_index),
+                "closure_breakdown": closure}
         # V2-7 报告数字自检：默认关，开启时对渲染结果二次核对，不一致按统计源值重渲染并标注。
         if self.cfg is not None and getattr(getattr(self.cfg, "report", None), "numeric_selfcheck", False):
             from ..report import numeric_selfcheck

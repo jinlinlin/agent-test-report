@@ -439,6 +439,8 @@ class ReportAgent:
         elif action.tool == "compute_statistics":
             kwargs["version_info"] = state.version_info
             kwargs["bugs"] = state.bugs
+            # V2-6 协助关闭素材（取数层从全产品缺陷筛出；无则空列表，行为不变）
+            kwargs["closed_other_bugs"] = state.closed_other_bugs
         elif action.tool == "polish_conclusion":
             kwargs["stats_obj"] = state.stats_obj
         elif action.tool == "render_report":
@@ -481,6 +483,8 @@ class ReportAgent:
             state.version_info = result.data
         elif tool_name == "get_version_bugs":
             state.bugs = result.data or []
+            # V2-6 同产品其他版本已关闭缺陷（slim），交统计层计协助关闭
+            state.closed_other_bugs = (result.meta or {}).get("closed_other_bugs") or []
         elif tool_name == "compute_statistics":
             state.stats = result.data
             state.stats_obj = result.meta.get("stats_obj")

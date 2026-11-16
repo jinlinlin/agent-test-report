@@ -56,7 +56,25 @@ class GetVersionBugsTool(Tool):
         for raw in scoped:
             detail = client.get_bug(raw.get("id"))  # 列表接口无模块名，从详情 moduleTitle 补拉
             bugs.append(self._normalize(raw, detail))
-        return ToolResult(ok=True, data=bugs, meta={"fetch_status": "ok", "count": len(bugs)})
+
+        # V2-6 协助关闭素材：同产品、已关闭、且 openedBuild 不含本版本的缺陷（scoped 已拦掉，
+        # 这里从 raw_bugs 另筛 slim 列表交统计层；不逐条补拉详情，零额外网络成本）。
+        # 列表接口若缺 closedDate，统计层按无法判定自然不计。
+        sfield = self.cfg.zentao.field_status
+        closed_other = [
+            {
+                "id": b.get("id"),
+                "status": b.get(sfield),
+                "closedDate": b.get(self.cfg.zentao.field_closed_date) or "",
+                "openedBuild": b.get(field_build) or "",
+            }
+            for b in raw_bugs
+            if str(b.get(sfield) or "").lower() == "closed"
+            and not zc.build_matches(b.get(field_build), build)
+        ]
+        return ToolResult(ok=True, data=bugs,
+                          meta={"fetch_status": "ok", "count": len(bugs),
+                                "closed_other_bugs": closed_other})
 
     def _normalize(self, raw: dict, detail: dict | None = None) -> dict:
         """禅道缺陷字段 → 本系统 schema（字段名走配置，应对禅道版本差异）。
@@ -85,6 +103,8 @@ class GetVersionBugsTool(Tool):
             "resolution": raw.get(z.field_resolution) or "",
             "activatedCount": raw.get(z.field_activated, 0),
             "openedDate": raw.get(z.field_opened_date) or "",
+            # V2-6 关闭时刻（关闭事件归属用）；列表接口可能缺失，优先从单条详情补拉
+            "closedDate": _pick(z.field_closed_date) or "",
             "openedBuild": raw.get(z.field_build) or "",
             "openedBy": zc.person_name(raw.get(z.field_opened_by)),
             "resolvedBy": zc.person_name(raw.get(z.field_resolved_by)),

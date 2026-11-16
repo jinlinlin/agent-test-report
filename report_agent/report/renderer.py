@@ -43,6 +43,26 @@ def _level_table(stats: StatsResult) -> str:
     return "\n".join(rows)
 
 
+def _closure_breakdown_table(stats: StatsResult) -> str:
+    """V2-6 4.1.2 缺陷关闭构成：以版本归属为主轴——本版本关闭（= 4.1 已关闭，整块不拆）
+    加上本周期协助关闭的其他版本缺陷，合计为总关闭。"""
+    s = stats.summary
+    v = stats.version
+    ver = v.build or v.name  # 优先用版本 token（如 V5.1.0），回退全名
+    window = f"{v.test_start} ~ {v.test_end}" if v.test_start and v.test_end else "未定（测试起止缺失）"
+    total_closed = s.closed + s.closed_other_versions
+    rows = [
+        f"按版本归属拆分关闭量：{ver} 关闭数与 4.1 缺陷分布完全一致，"
+        f"另列本测试周期（{window}）内协助关闭的其他版本缺陷：\n",
+        "| 关闭构成 | 数量 | 说明 |",
+        "| ---------------------- | ------ | -------------------------------------------- |",
+        f"| {ver} 关闭（= 4.1 已关闭数） | {s.closed} | 影响版本含 {ver} 且已关闭，计入缺陷总数与修复覆盖率 |",
+        f"| 本周期协助关闭的其他版本缺陷 | {s.closed_other_versions} | 关闭时刻落在 {ver} 测试窗口内且不属于 {ver} 的 bug |",
+        f"| **总关闭（{ver} 关闭＋协助关闭）** | **{total_closed}** | {ver} 关闭＋周期协助关闭的其他版本缺陷 |",
+    ]
+    return "\n".join(rows)
+
+
 def _tester_table(stats: StatsResult) -> str:
     """3.1 测试人员表：由本版本缺陷 openedBy/resolvedBy 如实聚合；无数据则标【待补充】。"""
     p = stats.people
@@ -204,7 +224,8 @@ def render_report(stats: StatsResult, charts: Optional[Dict[str, str]] = None,
                   ref_links: Optional[Dict[str, str]] = None,
                   defect_bitable_inline: bool = False,
                   test_scope: Optional[List[Dict[str, str]]] = None,
-                  test_env: Optional[Dict[str, object]] = None) -> str:
+                  test_env: Optional[Dict[str, object]] = None,
+                  closure_breakdown: bool = False) -> str:
     s = stats.summary
     v = stats.version
     c = stats.conclusion
@@ -264,6 +285,10 @@ def render_report(stats: StatsResult, charts: Optional[Dict[str, str]] = None,
     parts.append(_chart_block(charts, "status_bar", "缺陷状态分布图") + "\n")
     parts.append("### 4.1.1 功能缺陷分布情况\n")
     parts.append(_module_table(stats) + "\n")
+    # V2-6：默认关，关时本节整体不出现，报告与现状逐字一致；协助关闭为 0 时整节不显示（无构成可拆）
+    if closure_breakdown and s.closed_other_versions > 0:
+        parts.append("### 4.1.2 缺陷关闭构成\n")
+        parts.append(_closure_breakdown_table(stats) + "\n")
     parts.append("## 4.2 Bug 激活次数统计\n")
     parts.append(
         f"本次缺陷总数 {s.total}，激活 ≥1 次的缺陷 {s.activated_ge1_count} 个，激活率 {s.activated_rate}。\n"

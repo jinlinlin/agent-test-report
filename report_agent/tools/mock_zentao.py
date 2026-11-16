@@ -64,7 +64,8 @@ MOCK_VERSIONS: Dict[str, Dict[str, Any]] = {
 
 
 def _bug(bid, module, severity, status, resolution, activated=0, opened_by="", resolved_by="",
-         title=None, priority=None, btype=None, steps=None, assigned_to=None) -> Dict[str, Any]:
+         title=None, priority=None, btype=None, steps=None, assigned_to=None,
+         closed_date=None) -> Dict[str, Any]:
     mod = module.strip("/ ") or "功能"
     return {
         "id": bid,
@@ -73,6 +74,8 @@ def _bug(bid, module, severity, status, resolution, activated=0, opened_by="", r
         "status": status,          # active | resolved | closed
         "resolution": resolution,  # fixed | postponed | willnotfix | notrepro | duplicate | bydesign | external | ""
         "activatedCount": activated,
+        # V2-6 关闭时刻（与 live 规范化后的键名对齐；未赋值=空，构成表归入「无法判定」）
+        "closedDate": closed_date or "",
         "openedBy": opened_by,     # 提交人（测试）
         "resolvedBy": resolved_by, # 解决人（开发/运维）
         # 第 6 节缺陷清单展示字段（未显式传入则按模块/编号派生示例值，供离线预览）
@@ -139,6 +142,14 @@ MOCK_BUGS: Dict[str, List[Dict[str, Any]]] = {
     ],
 }
 
+# V2-6 演示数据：V6.0.0 的 id 1/2/3 赋关闭时刻 2026-10-05~09，落在 V5.0.0 测试窗口
+# （2026-09-30 ~ 2026-10-23）内 → 查 V5.0.0 时演示「协助关闭其他版本 3 条」。
+# 本版本自身缺陷的 closedDate 不再赋值：4.1.2 已改为版本归属口径，只消费其他版本的关闭时刻。
+for _b in MOCK_BUGS["UniResearch V6.0.0"]:
+    _dates6 = {1: "2026-10-05", 2: "2026-10-08", 3: "2026-10-09"}
+    if _b["id"] in _dates6:
+        _b["closedDate"] = _dates6[_b["id"]]
+
 
 def _match_version(query: str) -> str | None:
     """精确全名匹配；容忍用户输入包裹在自然语言句子中。"""
@@ -174,7 +185,26 @@ def fetch_bugs(version_name: str, fault: str = "none") -> ToolResult:
     key = _match_version(version_name)
     if key is None:
         return ToolResult(ok=False, error="版本不存在", meta={"fetch_status": "not_found"})
-    return ToolResult(ok=True, data=[dict(b) for b in MOCK_BUGS.get(key, [])], meta={"fetch_status": "ok"})
+    return ToolResult(ok=True, data=[dict(b) for b in MOCK_BUGS.get(key, [])],
+                      meta={"fetch_status": "ok", "closed_other_bugs": _closed_other_bugs(key)})
+
+
+def _closed_other_bugs(current_key: str) -> List[Dict[str, Any]]:
+    """V2-6 协助关闭素材：同项目、其他版本、已关闭缺陷的 slim 列表（与 live 取数层同形）。
+
+    mock 缺陷本身无 openedBuild，按所属版本的 build 合成；只保留统计归属所需四字段。"""
+    prod = MOCK_VERSIONS[current_key].get("product_name")
+    out: List[Dict[str, Any]] = []
+    for k, v in MOCK_VERSIONS.items():
+        if k == current_key or v.get("product_name") != prod:
+            continue
+        for b in MOCK_BUGS.get(k, []):
+            if str(b.get("status") or "").lower() != "closed":
+                continue
+            out.append({"id": b.get("id"), "status": b.get("status"),
+                        "closedDate": b.get("closedDate") or "",
+                        "openedBuild": v.get("build", "")})
+    return out
 
 
 # ---- V2-1 澄清候选查询（与 live 的 list_version_candidates 工具同形）----
