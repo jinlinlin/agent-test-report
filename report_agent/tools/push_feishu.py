@@ -163,7 +163,7 @@ class PushFeishuTool(Tool):
         # 空类不内嵌对应标题块+表（与正文第 6 节「空类不展示」同口径，用户 2026-11-13 要求），剩下类顺次重编号
         specs = [("当前版本遗留未解决bug", active), ("当前版本延期处理bug", postponed)]
         groups = [
-            (f"6.{i} {title}", [bug_to_fields(r, j + 1) for j, r in enumerate(rows)])
+            (f"6.{i} {title}", [bug_to_fields(r) for r in rows])
             for i, (title, rows) in enumerate([(t, rs) for t, rs in specs if rs], 1)
         ]
         try:

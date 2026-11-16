@@ -168,8 +168,8 @@ def _defect_table(rows: List[BugRow], empty_msg: str) -> str:
 
 
 # ---- 多维表格（第 6 节导出）：字段规格与记录映射（重现步骤全文不截断）----
+# 不设「序号」列：飞书多维表格左侧自带行号，序号列属重复信息（用户 2026-11-16 要求删除）。
 DEFECT_FIELD_SPECS: List[Dict[str, Any]] = [
-    {"field_name": "序号", "type": 1},
     {"field_name": "Bug编号", "type": 1},
     {"field_name": "所属模块", "type": 1},
     {"field_name": "bug标题", "type": 1},
@@ -200,11 +200,10 @@ def _bit_select(value, table: Dict[str, str]):
     return table.get(key) or (_bit_text(value) or None)
 
 
-def bug_to_fields(row: BugRow, seq: int) -> Dict[str, Any]:
+def bug_to_fields(row: BugRow) -> Dict[str, Any]:
     """一条缺陷→多维表格记录（列名→值）：枚举中文化、重现步骤全文不截断、空单选留 None。"""
     d = _fmt_date(row.opened_date)
     return {
-        "序号": str(seq),
         "Bug编号": _bit_text(row.id),
         "所属模块": _bit_text(row.module),
         "bug标题": _bit_text(row.title),

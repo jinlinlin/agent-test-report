@@ -29,8 +29,9 @@ def test_bug_to_fields_full_and_mapped():
                  steps="<p>" + "很长的重现步骤" * 40 + "</p>", status="active",
                  opened_by="张三", opened_date="2026-11-09T02:01:28Z", opened_build="V5.1.0",
                  assigned_to="李四", resolution="")
-    f = bug_to_fields(row, 1)
-    assert f["序号"] == "1" and f["Bug编号"] == "9"
+    f = bug_to_fields(row)
+    assert list(f)[0] == "Bug编号" and f["Bug编号"] == "9"  # 无序号列，首列为 Bug编号（即主列）
+    assert "序号" not in f
     assert f["功能类型"] == "代码错误" and f["bug状态"] == "激活"
     assert f["解决方案"] is None          # 空单选不建空选项
     assert f["创建日期"] == "2026-11-09"
@@ -126,7 +127,7 @@ class _EmbedFakeClient(FeishuClient):
 def test_embed_defect_bitable_orchestration():
     cfg = load_config(**{**BASE, "feishu.enabled": True, "feishu.doc_base_url": "https://x.feishu.cn"})
     fake = _EmbedFakeClient(cfg.feishu)
-    groups = [("6.1 当前版本遗留未解决bug", [{"序号": "1"}]), ("6.2 当前版本延期处理bug", [{"序号": "1"}, {"序号": "2"}])]
+    groups = [("6.1 当前版本遗留未解决bug", [{"Bug编号": "1"}]), ("6.2 当前版本延期处理bug", [{"Bug编号": "1"}, {"Bug编号": "2"}])]
     apps = fake.embed_defect_bitable("docX", groups, DEFECT_FIELD_SPECS)
     assert apps == [("appX", "tbl1"), ("appX", "tbl1")]  # 每组各一个内嵌块
     verbs = [(v, p) for v, p, _ in fake.calls]
@@ -141,7 +142,7 @@ def test_embed_defect_bitable_orchestration():
     # 每块：主列改名 PUT ×2；两个默认列 DELETE ×2（共 4）
     assert sum(1 for v, p in verbs if v == "PUT" and p.endswith("/fields/fldP")) == 2
     assert sum(1 for v, p in verbs if v == "DELETE" and "/fields/" in p) == 4
-    # 每块补建 12 列（field_specs 去掉首列）×2
+    # 每块补建除主列外的其余列（field_specs 去掉首列 Bug编号）×2
     assert sum(1 for v, p in verbs if v == "POST" and p.endswith("/tables/tbl1/fields")) == 2 * (len(DEFECT_FIELD_SPECS) - 1)
     # 每块清理默认空行（batch_delete 含 3 个 id）×2
     del_calls = [b for v, p, b in fake.calls if v == "POST" and p.endswith("/records/batch_delete")]

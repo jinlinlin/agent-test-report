@@ -591,24 +591,29 @@ class FeishuClient:
     # （column_index + 单个 column_width 整数，px 最小 50；传数组报 code=9499，实测）；
     # batch_update 子请求不支持该类型（实测 code=1770001），限频约 3 次/秒逐列 sleep。
     _WIDTH_PROFILES = (
-        # (表头须全部命中的关键词组, 各列占比) —— 按顺序取首个「列数一致且关键词全命中」的版式
+        # (表头须全部命中的关键词组, 各列占比[, 该表总宽px]) —— 按顺序取首个「列数一致且关键词全命中」的版式
+        # 第三项省略时用默认 _WIDTH_TOTAL_PX（正文列宽）；显式指定则把该表整体加宽到正文列宽之外
         (("模块", "描述"), (0.20, 0.80)),                     # 2.1 测试范围
         (("文档", "链接"), (0.25, 0.75)),                     # §1.3 参考文档
         (("岗位角色", "人员姓名"), (0.33, 0.67)),             # 3.1 测试人员
         (("环境", "测试地址", "账号密码"), (0.17, 0.41, 0.42)),  # 2.2 测试环境
-        (("缺陷等级",), (0.13, 0.13, 0.20, 0.30, 0.24)),       # 4.6 缺陷级别定义
-        (("模块", "缺陷总数"), (0.25, 0.15, 0.15, 0.15, 0.15, 0.15)),  # 4.1.1 功能缺陷分布
+        (("缺陷等级",), (0.15, 0.15, 0.20, 0.27, 0.23), 720),       # 4.6 缺陷级别定义（2026-11-16 整表加宽 720）
+        (("模块", "缺陷总数"), (0.30, 0.14, 0.14, 0.14, 0.14, 0.14), 720),  # 4.1.1 功能缺陷分布（整表加宽 720）
+        (("关闭构成",), (0.32, 0.10, 0.58), 720),                  # 4.1.2 缺陷关闭构成（整表加宽 720）
         (("等级", "缺陷总数"), (0.16, 0.16, 0.20, 0.16, 0.16, 0.16)),  # 4.5 等级状态分布
     )
-    _WIDTH_TOTAL_PX = 660  # 飞书正文列宽约 660px（等宽默认 2×330/3×220/6×110 均吻合）
+    _WIDTH_TOTAL_PX = 660  # 飞书正文列宽默认总宽约 660px（等宽默认 2×330/3×220/6×110 均吻合）
 
     @classmethod
     def _match_width_profile(cls, header_texts: list, cols: int):
-        """按首行表头文字匹配列宽版式：返回占比元组或 None（未命中不改宽）。"""
+        """按首行表头文字匹配列宽版式：返回 (占比元组, 总宽px) 或 None（未命中不改宽）。
+        版式第三项可选，指定该表总宽（覆盖默认 660px，用于把个别表整体加宽到正文列宽之外）。"""
         joined = "".join(str(t or "") for t in header_texts)
-        for keywords, ratios in cls._WIDTH_PROFILES:
+        for entry in cls._WIDTH_PROFILES:
+            keywords, ratios = entry[0], entry[1]
+            total = entry[2] if len(entry) > 2 else cls._WIDTH_TOTAL_PX
             if len(ratios) == cols and all(k in joined for k in keywords):
-                return ratios
+                return ratios, total
         return None
 
     def set_table_column_widths(self, document_id: str) -> bool:
@@ -639,10 +644,11 @@ class FeishuClient:
             if cols <= 0:
                 continue
             cells = [byid[i] for i in tb.get("children", []) if byid.get(i, {}).get("block_type") == 32][:cols]
-            ratios = self._match_width_profile([_cell_text(c) for c in cells], cols)
-            if not ratios:
+            matched = self._match_width_profile([_cell_text(c) for c in cells], cols)
+            if not matched:
                 continue
-            widths = [max(50, int(round(r * self._WIDTH_TOTAL_PX))) for r in ratios]
+            ratios, total = matched
+            widths = [max(50, int(round(r * total))) for r in ratios]
             if widths == [int(w) for w in (prop.get("column_width") or [])]:
                 continue
             for idx, w in enumerate(widths):  # 逐列设置：单块 PATCH + 限频 sleep

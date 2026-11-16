@@ -73,13 +73,15 @@ def test_env_and_module_and_level_profiles(monkeypatch):
     monkeypatch.setattr(time, "sleep", lambda s: None)
     items = (_table("env", ["环境", "测试地址", "账号密码"], widths=[220, 220, 220])
              + _table("mod", ["模块", "缺陷总数", "已关闭", "待解决", "待验收", "延期"], widths=[110] * 6)
+             + _table("cls", ["关闭构成", "数量", "说明"], widths=[220] * 3)
              + _table("lvl", ["缺陷等级", "缺陷性质", "系统中对应的错误分类", "描述", "修复优先级"], widths=[132] * 5))
     c = _FakeClient(items)
     assert c.set_table_column_widths("doc") is True
     assert dict(_width_updates(c)) == {
         "env": [112, 271, 277],
-        "mod": [165, 99, 99, 99, 99, 99],
-        "lvl": [86, 86, 132, 198, 158],
+        "mod": [216, 101, 101, 101, 101, 101],   # 4.1.1 整表加宽 720（0.30/0.14×5）
+        "cls": [230, 72, 418],                    # 4.1.2 整表加宽 720（0.32/0.10/0.58）
+        "lvl": [108, 108, 144, 194, 166],         # 4.6 整表加宽 720
     }
 
 
