@@ -10,6 +10,7 @@
 """
 from __future__ import annotations
 
+import json
 import time
 from typing import Any, Dict, List, Optional
 
@@ -39,6 +40,15 @@ def _split_bitable_token(token: str) -> tuple:
         app, tbl = token.rsplit("_", 1)
         return app, tbl
     return token, ""
+
+
+def _col_label(n: int) -> str:
+    """1-based 列序号转电子表格列名（1=A、26=Z、27=AA），供拼取值区间用。"""
+    label = ""
+    while n > 0:
+        n, rem = divmod(n - 1, 26)
+        label = chr(65 + rem) + label
+    return label
 
 
 class FeishuClient:
@@ -134,6 +144,29 @@ class FeishuClient:
         if not self._token:
             raise FeishuError("飞书未返回 tenant_access_token", "auth")
         return self._token
+
+    # ---- 消息（机器人收消息后回话用；需 im:message 类权限且该权限已随版本发布生效）----
+    def send_message(self, receive_id: str, msg_type: str, content: Dict[str, Any],
+                     receive_id_type: str = "chat_id") -> str:
+        """向群/会话发一条消息，返回 message_id（取不到则空串）。
+
+        content 按飞书要求是 JSON **字符串**，故此处 json.dumps；调用方只递 dict。
+        receive_id_type：chat_id=群，open_id=个人单聊，user_id=企业内用户 id。
+        """
+        payload = self._post(f"/im/v1/messages?receive_id_type={receive_id_type}", {
+            "receive_id": receive_id,
+            "msg_type": msg_type,
+            "content": json.dumps(content, ensure_ascii=False),
+        })
+        return (payload.get("data") or {}).get("message_id", "")
+
+    def reply_message(self, message_id: str, msg_type: str, content: Dict[str, Any]) -> str:
+        """在原消息下回复（比 send_message 更贴合“回答某人提问”），返回新 message_id。"""
+        payload = self._post(f"/im/v1/messages/{message_id}/reply", {
+            "msg_type": msg_type,
+            "content": json.dumps(content, ensure_ascii=False),
+        })
+        return (payload.get("data") or {}).get("message_id", "")
 
     # ---- 云空间 Drive：上传 + 导入 ----
     def upload_bytes(self, name: str, content: bytes, folder_token: str, mime: str = "text/markdown") -> str:
@@ -518,6 +551,61 @@ class FeishuClient:
             return ""
         node = self._match_child_node(self.list_nodes(f.wiki_space_id, version_node), title, obj_type=obj_type)
         return str(node.get("obj_token", "") or "")
+
+    # ---- 原生电子表格只读取值（供 V2-4 用例表为 obj_type=sheet 时读取）----
+    def list_sheet_ids(self, spreadsheet_token: str) -> List[str]:
+        """列原生电子表格的全部子表 sheet_id（`GET /sheets/v3/spreadsheets/{token}/sheets/query`）。
+
+        只读；空 token、无子表、接口失败/无权限/超时一律返回空列表，绝不抛断主链路。
+        """
+        token = str(spreadsheet_token or "").strip()
+        if not token:
+            return []
+        try:
+            payload = self._get(f"/sheets/v3/spreadsheets/{token}/sheets/query")
+        except FeishuError:
+            return []
+        return [str(s.get("sheet_id") or "") for s in ((payload.get("data") or {}).get("sheets") or [])
+                if s.get("sheet_id")]
+
+    def read_sheet_rows(self, spreadsheet_token: str, sheet_id: str = "", max_rows: int = 2000,
+                        max_cols: int = 26, max_windows: int = 3) -> List[List[Any]]:
+        """读飞书原生电子表格（obj_type=sheet）一个子表的行矩阵。
+
+        区间拼法 `{sheet_id}!A{start}:{列}{end}`，`valueRenderOption=ToString` 使超链/公式取显示文本而不是结构体。
+        列上限默认 26（A..Z）足够覆盖用例表表头；单窗读满且末行非空视为可能还有数据→续读下一窗，
+        最多 `max_windows` 个（防失控），因此超长用例表不会被 2000 行硬截断。
+        `sheet_id` 为空时自动取首个子表。空 token、无子表、接口失败一律降级（已读到多少算多少或空列表），
+        上层回退占位，绝不抛断主链路。
+        """
+        token = str(spreadsheet_token or "").strip()
+        if not token:
+            return []
+        sid = str(sheet_id or "").strip()
+        if not sid:
+            ids = self.list_sheet_ids(token)
+            if not ids:
+                return []
+            sid = ids[0]
+        col = _col_label(max(1, int(max_cols)))
+        window = max(1, int(max_rows))
+        rows: List[List[Any]] = []
+        for w in range(max(1, int(max_windows))):
+            start = 1 + w * window
+            rng = f"{sid}!A{start}:{col}{start + window - 1}"
+            try:
+                payload = self._get(f"/sheets/v2/spreadsheets/{token}/values/{rng}",
+                                    {"valueRenderOption": "ToString"})
+            except FeishuError:
+                break
+            values = ((payload.get("data") or {}).get("valueRange") or {}).get("values") or []
+            chunk = [list(r) for r in values if isinstance(r, (list, tuple))]
+            rows.extend(chunk)
+            # 未满一窗或末行为空 → 已到表尾，不再续读
+            last = chunk[-1] if chunk else []
+            if len(chunk) < window or not any(str(x or "").strip() for x in last):
+                break
+        return rows
 
     # ---- docx 正文只读（供 2.2 测试环境接地；任何失败降级空串，绝不阻断报告）----
     def read_doc_raw_content(self, doc_id: str) -> str:

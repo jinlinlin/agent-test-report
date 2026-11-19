@@ -8,7 +8,7 @@ import io
 
 import openpyxl
 
-from report_agent.report.cases import extract_scope_from_cases
+from report_agent.report.cases import extract_scope_from_cases, extract_scope_from_rows
 
 
 def _xlsx(rows):
@@ -106,3 +106,37 @@ def test_alternative_separators():
     data = _xlsx([["模块分类"], ["数据分析／可视化"], ["数据分析/图表"], ["研究助手>问答"]])
     rows = extract_scope_from_cases(data)
     assert [r["module"] for r in rows] == ["数据分析", "研究助手"]
+
+
+# ---- 行矩阵入口（飞书原生电子表格 obj_type=sheet 数据源）----
+
+def test_rows_entry_equals_xlsx_entry_for_same_data():
+    """同一份数据走两个入口结果逐字相等（解耦不改口径）。"""
+    table = [["用例编号", "模块分类", "用例名称"],
+             ["TC-1", "AI对话组件-模型选择", "下拉展示"],
+             ["TC-2", "AI对话组件-对话模式", "极速切换"],
+             ["TC-3", "研究助手-问答", "问答"]]
+    from_rows = extract_scope_from_rows(table)
+    from_xlsx = extract_scope_from_cases(_xlsx(table))
+    assert from_rows == from_xlsx
+    assert [r["module"] for r in from_rows] == ["AI对话组件", "研究助手"]
+
+
+def test_rows_column_order_irrelevant():
+    """按表头名定位列：sheet 里「优先级」排在第 8 列（xlsx 里第 4 列）不影响提取。"""
+    rows = extract_scope_from_rows([
+        ["用例编号", "模块分类", "用例名称", "测试类型", "前置条件", "测试步骤", "预期结果", "优先级", "执行结果"],
+        ["TC-001", "云文档类型扩展", "云文档类型扩展-新建入口展示-主页面", "功能测试", "x", "y", "z", "P1", ""],
+        ["TC-005", "Excel文档", "Excel文档-Sheet数量-持续新增", "功能测试", "x", "y", "z", "P1", "成功"],
+    ])
+    assert [r["module"] for r in rows] == ["云文档类型扩展", "Excel文档"]
+    # 模块分类为扁平一级 → 描述退用「用例名称」二级功能点
+    assert rows[0]["desc"] == "新建入口展示" and rows[1]["desc"] == "Sheet数量"
+
+
+def test_rows_empty_returns_none():
+    assert extract_scope_from_rows([]) is None
+
+
+def test_rows_without_module_col_returns_none():
+    assert extract_scope_from_rows([["用例编号", "用例名称"], ["TC-1", "x"]]) is None

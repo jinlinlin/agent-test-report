@@ -71,16 +71,40 @@ TEST_SCOPE_TABLE = (
 )
 
 
-def scope_table(rows) -> str:
-    """2.1 测试范围表：V2-4 从飞书文档正文接地提取到可信条目时渲染真实范围；
+def _scope_int(row) -> int:
+    """读一个条目的用例数，缺失/非法一律当 0（只用于排序，不进报告展示）。"""
+    try:
+        return int(str(row.get("case_count")).strip())
+    except (TypeError, ValueError):
+        return 0
 
-    rows 为 [{"module","desc"}, ...]（模块名逐字来自原文）。空/None 由调用方回退 TEST_SCOPE_TABLE 占位。
+
+def scope_table(rows, top_modules: int = 0) -> str:
+    """2.1 测试范围表：V2-4 从本版本测试用例表接地到可信条目时渲染真实范围（模块 | 描述）。
+
+    rows 为 [{"module","desc","case_count"}, ...]（模块与功能点逐字来自原文）。
+    空/None 由调用方回退 TEST_SCOPE_TABLE 占位。case_count 不展示，只用于「前 N 行」排序。
+
+    top_modules>0 且模块数超过它时收敛行数：按用例数降序（同数保持原文顺序，sorted 稳定）取前 N 行，
+    其余合并为末行「其他（M 个模块）」，描述列逐字列出其余模块名（最多 8 个，超出以…收尾）。
+    模块数未超阈值或 top_modules=0 时按原文顺序全列，不排序、不合并。
     """
+    items = [dict(r or {}) for r in (rows or [])]
+    limit = int(top_modules or 0)
+    tail: list = []
+    head = items
+    if limit and len(items) > limit:
+        ranked = sorted(items, key=lambda r: -_scope_int(r))
+        head, tail = ranked[:limit], ranked[limit:]
     out = ["| 模块 | 描述 |", "| ------------ | -------------------------------- |"]
-    for r in rows or []:
+    for r in head:
         module = str(r.get("module", "")).strip() or "【待补充】"
         desc = str(r.get("desc", "")).strip() or "—"
         out.append(f"| {module} | {desc} |")
+    if tail:
+        names = [str(r.get("module", "")).strip() or "【待补充】" for r in tail]
+        shown = "、".join(names[:8]) + ("…" if len(names) > 8 else "")
+        out.append(f"| 其他（{len(names)} 个模块） | {shown} |")
     return "\n".join(out)
 
 TEST_ENV_TABLE = (

@@ -4,4 +4,6 @@ requests>=2.31
 openai>=1.30
 matplotlib>=3.7
 openpyxl>=3.1
+# 仅飞书应用机器人（python -m report_agent.bot）需要：长连接收事件；CLI/定时任务不装也能跑
+lark-oapi>=1.8
 pytest>=8.0

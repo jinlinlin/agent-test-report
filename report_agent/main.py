@@ -4,6 +4,11 @@
     python -m report_agent.main "帮我生成 UniResearch V5.0.0 的测试报告"
     python -m report_agent.main "UniResearch V5.0.0" --fault not_found
     python -m report_agent.main "UniResearch V5.0.0" --max-steps 3
+
+程序化入口（命令行 / 定时任务 / 飞书机器人共用同一内核，各调用方只换外壳）：
+    from report_agent.main import generate_report
+    result = generate_report("UniResearch V5.1.0", mode="live", push=True)
+    print(result["status"], result["feishu_url"], result["summary"])
 """
 from __future__ import annotations
 
@@ -67,12 +72,57 @@ def _terminal_ask(question: str, options) -> str:
         return ""
 
 
-def run_once(user_input: str, **overrides) -> tuple[Path | None, Path | None, str, str | None]:
-    cfg = load_config(**overrides)
-    # 开关开启时才接上终端 input()（V2-1 歧义澄清 或 V2-3 首次询问参考文档链接）；
+def _summary_of(state) -> dict:
+    """从 stats_obj 抽对外摘要（通知/机器人回复要用的关键指标）。
+
+    早退场景（澄清、版本不存在、步数超限）没有 stats_obj，返回空 dict 而不报错——
+    调用方按 status 判成败，摘要只用于成功时的展示，缺字段绝不补造数字。
+    """
+    stats = getattr(state, "stats_obj", None)
+    s = getattr(stats, "summary", None) if stats is not None else None
+    if s is None:
+        return {}
+    c = getattr(stats, "conclusion", None)
+    return {
+        "total": s.total,
+        "closed": s.closed,
+        "pending_resolve": s.pending_resolve,
+        "pending_accept": s.pending_accept,
+        "postponed": s.postponed,
+        "fix_coverage": s.fix_coverage,
+        "activated_rate": s.activated_rate,
+        "closed_other_versions": s.closed_other_versions,
+        "release_advice": getattr(c, "release_advice", "") or "",
+        "gate_pass": bool(getattr(c, "p1_pass", True))
+                     and bool(getattr(c, "p2_pass", True))
+                     and bool(getattr(c, "p3_pass", True)),
+    }
+
+
+def generate_report(user_input: str, *, mode: str | None = None,
+                    push: bool | None = None, ask=None, **overrides) -> dict:
+    """程序化入口：跑一次 Agent、落盘报告与 Trace，返回结构化结果（不含任何 print/input 副作用）。
+
+    mode/push 是对外壳友好的便捷参数，内部一律折成 load_config 的点路径覆盖
+    （`zentao.mode` / `feishu.enabled`）；同键显式写在 overrides 里时以 overrides 为准。
+    ask 为注入式澄清回调（CLI 传 _terminal_ask、机器人传飞书版、None=不反问），
+    且只在 V2-1/V2-3 开关开启时才真正接上——两开关均关时行为与 V1 逐字一致。
+
+    返回字段：status / version_name / product_name / build / display_name / report_path /
+    trace_path / report_markdown / feishu_url / feishu_error / fail_reason / summary。
+    report_path 无论文件是否写出都给（与 V1 run_once 同口径），调用方自行 exists() 判断。
+    """
+    opts = dict(overrides)
+    if mode is not None:
+        opts.setdefault("zentao.mode", mode)
+    if push is not None:
+        opts.setdefault("feishu.enabled", bool(push))
+    cfg = load_config(**opts)
+
+    # 开关开启时才接上调用方提供的澄清入口（V2-1 歧义澄清 或 V2-3 首次询问参考文档链接）；
     # 两者均关时传 None，行为与 V1 逐字一致。
     need_ask = cfg.agent.interactive_clarify or getattr(cfg.memory, "doc_links_enabled", False)
-    agent, tracer = build_agent(cfg, ask=(_terminal_ask if need_ask else None))
+    agent, tracer = build_agent(cfg, ask=(ask if need_ask else None))
     state = agent.run(user_input)
 
     # 落盘报告：名称优先取数环节确认的权威产品名+版本号（与飞书文档名同口径），
@@ -87,7 +137,26 @@ def run_once(user_input: str, **overrides) -> tuple[Path | None, Path | None, st
     # 落盘 Trace
     trace_path = tracer.save(f"{_safe_name(display)}.json")
 
-    return report_path, trace_path, state.status, state.feishu_doc_url
+    return {
+        "status": state.status,
+        "version_name": state.version_name,
+        "product_name": vi.get("product_name", ""),
+        "build": vi.get("build", ""),
+        "display_name": display,
+        "report_path": report_path,
+        "trace_path": trace_path,
+        "report_markdown": state.report_markdown,
+        "feishu_url": state.feishu_doc_url,
+        "feishu_error": state.feishu_error,
+        "fail_reason": state.fail_reason,
+        "summary": _summary_of(state),
+    }
+
+
+def run_once(user_input: str, **overrides) -> tuple[Path | None, Path | None, str, str | None]:
+    """CLI 薄壳：转调 generate_report，把终端 input() 作为澄清入口注入，并按 V1 口径回传四元组。"""
+    res = generate_report(user_input, ask=_terminal_ask, **overrides)
+    return res["report_path"], res["trace_path"], res["status"], res["feishu_url"]
 
 
 def run_probe(version_name: str = "", **overrides) -> int:

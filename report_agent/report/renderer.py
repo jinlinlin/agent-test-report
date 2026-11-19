@@ -224,6 +224,7 @@ def render_report(stats: StatsResult, charts: Optional[Dict[str, str]] = None,
                   defect_bitable_inline: bool = False,
                   test_scope: Optional[List[Dict[str, str]]] = None,
                   test_env: Optional[Dict[str, object]] = None,
+                  scope_top_modules: int = 0,
                   closure_breakdown: bool = False) -> str:
     s = stats.summary
     v = stats.version
@@ -246,8 +247,9 @@ def render_report(stats: StatsResult, charts: Optional[Dict[str, str]] = None,
     parts.append("# 2. 测试概要\n")
     parts.append("## 2.1 测试范围\n")
     if test_scope:
-        # V2-4：从本版本目录下的测试用例 xlsx 接地提取的范围（模块=菜单目录，描述=功能点）
-        parts.append(T.scope_table(test_scope) + "\n")
+        # V2-4：从本版本目录下的测试用例表接地提取的范围（模块=菜单目录，描述=功能点）
+        # scope_top_modules>0 且模块数超它时收敛为前 N 行 + 「其他」行（用例数只用于排序，不上表）
+        parts.append(T.scope_table(test_scope, top_modules=scope_top_modules) + "\n")
     else:
         parts.append(T.TEST_SCOPE_TABLE + "\n")
         parts.append("> 模块清单可参照 4.1.1 缺陷分布自动列出；描述需人工或 V2 补齐。\n")

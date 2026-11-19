@@ -100,6 +100,22 @@ class FeishuConfig:
 
 
 @dataclass
+class BotConfig:
+    """飞书应用机器人入口（交付外壳，只是 generate_report() 的又一个调用方）。
+
+    enabled 默认 False：关闭时不建立长连接、不产生任何网络调用，其余链路行为与现状逐字一致。
+    allowed_chats / allowed_users 是白名单，**默认为空 = 全部拒绝**：机器人以应用身份跑，
+    任何能给它发消息的人都等于能借它读内网禅道、写知识库，故默认收紧而非默认放行。
+    两项一律走 .env（逗号分隔），勿写进 settings.yaml。
+    """
+    enabled: bool = False
+    push: bool = True          # 机器人产出的报告是否推飞书知识库（关时只回本地路径）
+    max_workers: int = 1       # 并发跑几份；1=串行，防同一版本被并发重复拉数
+    allowed_chats: tuple = ()
+    allowed_users: tuple = ()
+
+
+@dataclass
 class MockConfig:
     fault: str = "none"  # none | not_found | timeout | error | empty_bugs
 
@@ -143,12 +159,18 @@ class ScopeConfig:
     enabled 默认 False：关闭时不下载/不解析、不填充，2.1 行为与 V1 占位逐字一致。
     case_doc_title：版本目录下测试用例文件的标题关键词（obj_type=file）；module_col/name_col：用例表模块列/用名列表头；
     group_level：top=按一级模块聚合（默认）/ full=按完整路径。
+    top_modules：2.1 表最多单列的模块数，超出则按用例数降序取前 N、其余合并为「其他」行
+        （用例数只用于排序，不写进报告）；默认 0=不限制，按原文顺序全列。
+    module_groups：人工确认的「一级菜单 → 成员模块」归并映射（settings.yaml 里写 name/modules），
+        代码默认空=不归并；只把用例表已有的模块名归到组名下，不生成新名称（详见 cases.apply_module_groups）。
     """
     enabled: bool = False
     case_doc_title: str = "测试用例"
     module_col: str = "模块分类"
     name_col: str = "用例名称"
     group_level: str = "top"
+    top_modules: int = 0
+    module_groups: tuple = ()
 
 
 @dataclass
@@ -181,6 +203,7 @@ class Config:
     agent: AgentConfig = field(default_factory=AgentConfig)
     zentao: ZentaoConfig = field(default_factory=ZentaoConfig)
     feishu: FeishuConfig = field(default_factory=FeishuConfig)
+    bot: BotConfig = field(default_factory=BotConfig)
     mock: MockConfig = field(default_factory=MockConfig)
     trace: TraceConfig = field(default_factory=TraceConfig)
     report: ReportConfig = field(default_factory=ReportConfig)
@@ -205,6 +228,11 @@ class Config:
 
 def _get(d: Dict[str, Any], key: str, default: Any) -> Any:
     return d.get(key, default) if isinstance(d, dict) else default
+
+
+def _csv(value: str) -> tuple:
+    """把 .env 里的逗号分隔白名单拆成去空白的元组（兼容中文逗号）。"""
+    return tuple(x.strip() for x in (value or "").replace("，", ",").split(",") if x.strip())
 
 
 def load_config(settings_path: Path | str = SETTINGS_PATH, **overrides) -> Config:
@@ -283,6 +311,13 @@ def load_config(settings_path: Path | str = SETTINGS_PATH, **overrides) -> Confi
             table_column_widths=str(_get(_get(raw, "feishu", {}), "table_column_widths", True)).lower() in ("1", "true", "yes", "on"),
         ),
         mock=MockConfig(fault=_get(_get(raw, "mock", {}), "fault", "none")),
+        bot=BotConfig(
+            enabled=str(_get(_get(raw, "bot", {}), "enabled", False)).lower() in ("1", "true", "yes", "on"),
+            push=str(_get(_get(raw, "bot", {}), "push", True)).lower() in ("1", "true", "yes", "on"),
+            max_workers=int(_get(_get(raw, "bot", {}), "max_workers", 1)),
+            allowed_chats=_csv(os.getenv("FEISHU_BOT_ALLOWED_CHATS", "")),
+            allowed_users=_csv(os.getenv("FEISHU_BOT_ALLOWED_USERS", "")),
+        ),
         trace=TraceConfig(
             enabled=_get(_get(raw, "trace", {}), "enabled", True),
             dir=_get(_get(raw, "trace", {}), "dir", "traces"),
@@ -308,6 +343,12 @@ def load_config(settings_path: Path | str = SETTINGS_PATH, **overrides) -> Confi
             module_col=_get(_get(raw, "scope", {}), "module_col", "模块分类"),
             name_col=_get(_get(raw, "scope", {}), "name_col", "用例名称"),
             group_level=_get(_get(raw, "scope", {}), "group_level", "top"),
+            top_modules=_get(_get(raw, "scope", {}), "top_modules", 0),
+            module_groups=tuple(
+                (str(g.get("name", "")).strip(),
+                 tuple(str(m).strip() for m in (g.get("modules") or []) if str(m).strip()))
+                for g in (_get(_get(raw, "scope", {}), "module_groups", ()) or [])
+                if isinstance(g, dict) and str(g.get("name", "")).strip()),
         ),
         test_env=TestEnvConfig(
             enabled=str(_get(_get(raw, "test_env", {}), "enabled", False)).lower() in ("1", "true", "yes", "on"),

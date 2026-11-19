@@ -38,9 +38,11 @@ class RenderReportTool(Tool):
         closure = bool(self.cfg is not None and getattr(getattr(self.cfg, "report", None), "closure_breakdown", False))
         markdown = render_report(stats_obj, charts=charts, ref_links=ref_links,
                                  defect_bitable_inline=embed, test_scope=test_scope, test_env=test_env,
+                                 scope_top_modules=int(getattr(getattr(self.cfg, "scope", None), "top_modules", 0) or 0),
                                  closure_breakdown=closure)
         meta = {"ref_doc_links": ref_links, "defect_bitable_embed": embed,
                 "test_scope_filled": bool(test_scope),
+                "test_scope_modules": len(test_scope or []),
                 "test_env_filled": bool(test_env and test_env.get("rows")),
                 "doc_index_filled": bool(doc_index),
                 "closure_breakdown": closure}
@@ -80,11 +82,12 @@ class RenderReportTool(Tool):
             return {}
 
     def _resolve_test_scope(self, product_name: str, build: str):
-        """V2-4 测试范围接地：仅当 scope.enabled + 飞书配齐时，从本版本目录下的测试用例 xlsx 提取 2.1 范围。
+        """V2-4 测试范围接地：仅当 scope.enabled + 飞书配齐时，从本版本目录下的测试用例表提取 2.1 范围。
 
-        数据源：测试用例 xlsx（obj_type=file，drive 下载+解析「模块分类/用例名称」）——结构化、含计划内
-        零缺陷模块，且文件严格限定在本项目+版本目录，本身已接地。任何异常/提不出均返回 None → 回退占位；
-        关闭时零触碰，行为与 V1 逐字一致。
+        数据源：本版本目录下的测试用例表（上传的 .xlsx 附件或飞书原生电子表格，见 _scope_from_cases）
+        ——结构化、含计划内零缺陷模块，且文件严格限定在本项目+版本目录，本身已接地。
+        提取后若配了 scope.module_groups（人工确认的一级菜单映射）再归并一次；未配/未命中则原样返回。
+        任何异常/提不出均返回 None → 回退占位；关闭时零触碰，行为与 V1 逐字一致。
         """
         cfg = self.cfg
         if cfg is None:
@@ -96,21 +99,42 @@ class RenderReportTool(Tool):
         if not (f.enabled and product_name and build and f.app_id and f.app_secret
                 and f.wiki_space_id and f.wiki_projects_parent):
             return None
-        return self._scope_from_cases(FeishuClient(f), product_name, build, scope_cfg)
+        scope = self._scope_from_cases(FeishuClient(f), product_name, build, scope_cfg)
+        # 人工确认的分组映射（可选）：把扁平的细模块归并到一级菜单，只改名不发明、未命中原样保留
+        from ..report.cases import apply_module_groups
+        return apply_module_groups(scope, getattr(scope_cfg, "module_groups", ()) or ())
 
     def _scope_from_cases(self, client, product_name: str, build: str, scope_cfg):
-        """定位并下载本版本目录下的测试用例 xlsx，解析模块列聚合为范围；任一环节失败返回 None（回退占位）。"""
-        try:
-            from ..report.cases import extract_scope_from_cases
+        """定位本版本目录下的测试用例表并聚合为范围；任一环节失败返回 None（回退占位）。
 
-            token = client.find_doc_obj_token(product_name, build,
-                                              getattr(scope_cfg, "case_doc_title", "测试用例"), obj_type="file")
-            if not token:
+        两种载体按优先级分流（同一套表头名定位与取段口径，列顺序无关）：
+        ① obj_type=file（上传的 .xlsx）→ drive 下载字节 + openpyxl；
+        ② obj_type=sheet（飞书原生电子表格）→ sheets 取值接口拿行矩阵。
+        先找 file 再找 sheet：同一目录两者共存时以附件为准（历史行为不变）。
+        sheet 有多个子表时**依次尝试、取首个能解析出模块的子表**，不跨子表合并（守单源红线）；
+        子表列表都列不出来（无权限/接口异常）直接回退占位，不再多发一次重复查询。
+        """
+        try:
+            from ..report.cases import extract_scope_from_cases, extract_scope_from_rows
+
+            kw = dict(module_col=getattr(scope_cfg, "module_col", "模块分类"),
+                      name_col=getattr(scope_cfg, "name_col", "用例名称"),
+                      group_level=getattr(scope_cfg, "group_level", "top"))
+            title = getattr(scope_cfg, "case_doc_title", "测试用例")
+            file_token = client.find_doc_obj_token(product_name, build, title, obj_type="file")
+            if file_token:
+                return extract_scope_from_cases(client.download_file(file_token), **kw)
+            sheet_token = client.find_doc_obj_token(product_name, build, title, obj_type="sheet")
+            if not sheet_token:
                 return None
-            content = client.download_file(token)
-            return extract_scope_from_cases(content, module_col=getattr(scope_cfg, "module_col", "模块分类"),
-                                            name_col=getattr(scope_cfg, "name_col", "用例名称"),
-                                            group_level=getattr(scope_cfg, "group_level", "top"))
+            ids = client.list_sheet_ids(sheet_token)
+            if not ids:
+                return None
+            for sid in ids[:5]:
+                scope = extract_scope_from_rows(client.read_sheet_rows(sheet_token, sheet_id=sid), **kw)
+                if scope:
+                    return scope
+            return None
         except Exception:
             return None
 
