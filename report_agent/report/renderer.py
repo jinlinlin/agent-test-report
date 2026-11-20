@@ -20,6 +20,23 @@ def _chart_block(charts: Optional[Dict[str, str]], key: str, item: str) -> str:
     return T.CHART_PLACEHOLDER.format(item=item)
 
 
+def _remaining_summary(stats: StatsResult) -> str:
+    """② 达标分支遗留概况：列出待解决/待验收/延期三类跟踪事项计数，帮助发布后持续跟进。"""
+    s = stats.summary
+    lv = {l.level: l for l in stats.level_status_distribution}
+    p2a = lv.get("P2").active if "P2" in lv else 0
+    p3a = lv.get("P3").active if "P3" in lv else 0
+    p4a = lv.get("P4").active if "P4" in lv else 0
+    lines = ["\n发布后仍需跟踪以下遗留（不阻断准入门槛）："]
+    lines.append(f"- 待解决 {s.pending_resolve} 条"
+                 f"（含 P2 严重 {p2a} 条、P3 一般 {p3a} 条、P4 建议 {p4a} 条）")
+    if s.pending_accept:
+        lines.append(f"- 待验收 {s.pending_accept} 条")
+    if s.postponed:
+        lines.append(f"- 延期处理 {s.postponed} 条")
+    return "\n".join(lines) + "\n"
+
+
 def _module_table(stats: StatsResult) -> str:
     rows = ["| 模块 | 缺陷总数 | 已关闭 | 待解决 | 待验收 | 延期 |", "|---------------|---------|---------|---------|---------|---------|"]
     for m in stats.module_distribution:
@@ -361,18 +378,24 @@ def render_report(stats: StatsResult, charts: Optional[Dict[str, str]] = None,
     # 5. 测试结论
     parts.append("# 5. 测试结论\n")
     if stats.integrity.data_complete:
-        parts.append("依据发布准入标准（激活 P1=0；P2 激活占比 ≤5%；P3 激活占比 ≤30%；P4 不限），逐项核对如下：\n")
+        parts.append("依据发布准入标准（激活 P1=0；P2 激活占比 ≤5%；P3 激活占比 ≤30%；P4 不限；"
+                         "占比口径：各等级激活数 ÷ 本版本缺陷总数），逐项核对如下：\n")
         for e in c.evidence:
             parts.append(f"- {e}")
         parts.append("")
         # 用例执行概况作为质量背景引用（不影响发布准入门槛，准入仍只按缺陷四项）
         if case_summary and case_summary.get("exec_available"):
+            not_passed = case_summary['executed'] - case_summary['passed']
             parts.append(
-                f"> 用例执行背景（不作准入判定）：共 {case_summary['total']} 条、"
-                f"执行 {case_summary['executed']} 条，执行通过率 {case_summary['pass_rate']}。\n"
+                f"本版本共执行测试用例 {case_summary['executed']} 条，"
+                f"通过 {case_summary['passed']} 条（通过率 {case_summary['pass_rate']}），"
+                f"未通过 {not_passed} 条已纳入缺陷跟踪。\n"
             )
         parts.append("## 5.1 发布建议\n")
         parts.append(c.release_advice + "\n")
+        # ② 达标分支补遗留概况（仅发布通过且有缺陷时输出，不影响判定逻辑）
+        if c.p1_pass and c.p2_pass and c.p3_pass and s.total > 0 and s.pending_resolve > 0:
+            parts.append(_remaining_summary(stats))
     else:
         parts.append("数据不完整，暂不输出结论。缺口：" + "、".join(stats.integrity.missing_fields) + "\n")
 

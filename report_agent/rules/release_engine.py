@@ -42,8 +42,8 @@ def evaluate(level_status_distribution: List[LevelStatus], total: int) -> Conclu
 
     evidence: List[str] = [
         f"激活 P1={p1.active}（门槛：=0）{'，达标' if p1_pass else '，未达标'}",
-        f"激活 P2 占比 {p2_ratio:.2f}%（门槛：≤{P2_THRESHOLD:.2f}%）{'，达标' if p2_pass else '，未达标'}",
-        f"激活 P3 占比 {p3_ratio:.2f}%（门槛：≤{P3_THRESHOLD:.2f}%）{'，达标' if p3_pass else '，未达标'}",
+        f"激活 P2 占比 {p2_ratio:.2f}%（{p2.active} ÷ {total}，门槛：≤{P2_THRESHOLD:.2f}%）{'，达标' if p2_pass else '，未达标'}",
+        f"激活 P3 占比 {p3_ratio:.2f}%（{p3.active} ÷ {total}，门槛：≤{P3_THRESHOLD:.2f}%）{'，达标' if p3_pass else '，未达标'}",
         f"激活 P4={p4.active}（不做限制）",
     ]
 
