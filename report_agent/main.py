@@ -60,6 +60,14 @@ def _safe_name(version_name: str) -> str:
     return "".join(ch if ch.isalnum() or ch in "._-" else "_" for ch in (version_name or "report"))
 
 
+def _with_local_title(markdown: str, display: str) -> str:
+    """本地 md 落盘时补 H1 标题行：正文与飞书推送维持无 H1（飞书节点标题即文档名，
+    renderer 章节整体上移一级），仅文件产物首行加「# {display} 测试报告」便于离线阅读识别版本。"""
+    if not markdown or markdown.lstrip().startswith(f"# {display} 测试报告"):
+        return markdown
+    return f"# {display} 测试报告\n\n{markdown}"
+
+
 def _terminal_ask(question: str, options) -> str:
     """命令行交互澄清：打印候选并读一行输入。仅在 interactive_clarify 开启且输入歧义时被 loop 调用；
     非交互环境（管道/EOF）返回空串，由 loop 优雅退回 clarify，不会挂起。"""
@@ -132,7 +140,7 @@ def generate_report(user_input: str, *, mode: str | None = None,
     display = f"{vi.get('product_name', '')} {vi.get('build', '')}".strip() or state.version_name or "report"
     report_path = cfg.report_dir / f"{_safe_name(display)}_测试报告.md"
     if state.report_markdown:
-        report_path.write_text(state.report_markdown, encoding="utf-8")
+        report_path.write_text(_with_local_title(state.report_markdown, display), encoding="utf-8")
 
     # 落盘 Trace
     trace_path = tracer.save(f"{_safe_name(display)}.json")

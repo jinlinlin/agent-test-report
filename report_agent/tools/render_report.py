@@ -18,13 +18,15 @@ def _safe_name(version_name: str) -> str:
 
 class RenderReportTool(Tool):
     name = "render_report"
-    description = "将独立统计工具产出的结构化结果渲染为 Markdown 测试报告（含本地图表，失败降级占位；开启飞书时自动检索测试大纲/测试用例链接）。由循环注入 stats_obj、product_name 与 build。"
-    parameters = {"stats_obj": "object(注入)", "product_name": "string(注入)", "build": "string(注入)"}
+    description = "将独立统计工具产出的结构化结果渲染为 Markdown 测试报告（含本地图表，失败降级占位；开启飞书时自动检索测试大纲/测试用例链接）。由循环注入 stats_obj、product_name、build 与 product_id。"
+    parameters = {"stats_obj": "object(注入)", "product_name": "string(注入)", "build": "string(注入)",
+                  "product_id": "string(注入)"}
 
     def __init__(self, cfg=None) -> None:
         self.cfg = cfg  # 未注入 cfg 时不产图、不检索飞书链接，行为与纯 Markdown 渲染一致（兼容旧调用）
 
-    def run(self, stats_obj=None, product_name: str = "", build: str = "", project_doc_links=None, **kwargs) -> ToolResult:
+    def run(self, stats_obj=None, product_name: str = "", build: str = "", product_id=None,
+            project_doc_links=None, **kwargs) -> ToolResult:
         if stats_obj is None:
             return ToolResult(ok=False, error="缺少统计结果，无法渲染报告")
         charts = self._render_charts(stats_obj)
@@ -47,7 +49,8 @@ class RenderReportTool(Tool):
                                  defect_bitable_inline=embed, test_scope=test_scope, test_env=test_env,
                                  scope_top_modules=int(getattr(getattr(self.cfg, "scope", None), "top_modules", 0) or 0),
                                  closure_breakdown=closure,
-                                 case_summary=case_summary)
+                                 case_summary=case_summary,
+                                 zentao_bugs_url=self._bugs_browse_url(product_id))
         meta = {"ref_doc_links": ref_links, "defect_bitable_embed": embed,
                 "test_scope_filled": bool(test_scope),
                 "test_scope_modules": len(test_scope or []),
@@ -60,6 +63,16 @@ class RenderReportTool(Tool):
             from ..report import numeric_selfcheck
             markdown, meta["numeric_selfcheck"] = numeric_selfcheck.apply(markdown, stats_obj)
         return ToolResult(ok=True, data=markdown, meta=meta)
+
+    def _bugs_browse_url(self, product_id) -> str:
+        """§6 「按版本筛选查阅」的禅道缺陷列表链接：经典路由 bug-browse-{productID}-0-all.html。
+
+        base_url 取配置（live 真实地址由 .env ZENTAO_BASE_URL 注入）；未配 base_url 或 product_id
+        一律返回空串 → 第 6 节引导语维持纯文本，与旧产出逐字一致。"""
+        base = str(getattr(getattr(self.cfg, "zentao", None), "base_url", "") or "").rstrip("/")
+        if not base or product_id in (None, ""):
+            return ""
+        return f"{base}/bug-browse-{product_id}-0-all.html"
 
     def _defect_embed_mode(self, stats_obj) -> bool:
         """第 6 节是否走 C（文档内嵌多维表格）：飞书启用 + 开 defect_bitable + 开 defect_bitable_embed + 有缺陷行。

@@ -118,15 +118,35 @@ TEST_ENV_TABLE = (
 
 # 3.1 测试人员表已改为渲染层根据本版本缺陷 openedBy/resolvedBy 动态生成（见 renderer._tester_table）。
 
-DEFECT_LIST_NOTE = (
-    "说明：下列清单内嵌本版本需重点关注的两类缺陷（延期处理、激活待解决），字段与禅道一致；"
-    "完整缺陷明细仍可在禅道按版本筛选查阅。"
-)
+# 第 6 节引导语尾句：配了 zentao.base_url + product_id 时把「禅道」渲染为缺陷列表链接，未配置维持纯文本原样。
+_ZENTAO_LINK_TAIL = "完整缺陷明细仍可在[禅道]({url})按版本筛选查阅。"
 
 
-def defect_bitable_inline_note(postponed_count: int, active_count: int) -> str:
-    """第 6 节以文档内嵌多维表格展开时的正文（只给计数与引导，链接与宽表都不写；实际表由推送环节插入）。"""
+def defect_list_note(zentao_url: str = "") -> str:
+    """第 6 节正文宽表形态引导语；无 zentao_url 时与旧 DEFECT_LIST_NOTE 逐字一致。"""
+    tail = _ZENTAO_LINK_TAIL.format(url=zentao_url) if zentao_url else "完整缺陷明细仍可在禅道按版本筛选查阅。"
+    return (
+        "说明：下列清单内嵌本版本需重点关注的两类缺陷（延期处理、激活待解决），字段与禅道一致；"
+        + tail
+    )
+
+
+DEFECT_LIST_NOTE = defect_list_note()
+
+
+def defect_bitable_inline_note(postponed_count: int, active_count: int,
+                              zentao_url: str = "") -> str:
+    """第 6 节以文档内嵌多维表格展开时的正文（只给计数与引导，链接与宽表都不写；实际表由推送环节插入）。
+
+    无 zentao_url 时与旧版逐字一致（含原文「缺陷详细见bug清单」句式，保回退行为不变）。
+    """
+    tail = _ZENTAO_LINK_TAIL.format(url=zentao_url) if zentao_url else "完整缺陷明细仍可在禅道按版本筛选查阅。"
+    if zentao_url:
+        return (
+            f"本次测试共汇总遗留未解决 {active_count} 条、延期处理 {postponed_count} 条，"
+            "缺陷详细见下方内嵌清单。" + tail
+        )
     return (
         f"本次测试共汇总遗留未解决 {active_count} 条、延期处理 {postponed_count} 条，"
-        "缺陷详细见bug清单。完整缺陷明细仍可在禅道按版本筛选查阅。"
+        "缺陷详细见bug清单。" + tail
     )

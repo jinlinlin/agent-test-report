@@ -448,6 +448,8 @@ class ReportAgent:
             vi = state.version_info or {}
             kwargs["product_name"] = vi.get("product_name", "")
             kwargs["build"] = vi.get("build", "")
+            # §6 禅道缺陷列表链接需要产品 ID（取数层已核实）；缺失时工具层自动退回纯文本
+            kwargs["product_id"] = vi.get("product_id", "")
             # V2-3：以报告权威产品名（version_info）为键查/登项目记忆（关闭时返回 {}，行为不变）
             kwargs["project_doc_links"] = self._resolve_project_doc_links(vi.get("product_name", ""), state)
         elif action.tool == "push_feishu":

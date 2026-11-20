@@ -260,7 +260,8 @@ def render_report(stats: StatsResult, charts: Optional[Dict[str, str]] = None,
                   test_env: Optional[Dict[str, object]] = None,
                   scope_top_modules: int = 0,
                   closure_breakdown: bool = False,
-                  case_summary: Optional[Dict] = None) -> str:
+                  case_summary: Optional[Dict] = None,
+                  zentao_bugs_url: str = "") -> str:
     s = stats.summary
     v = stats.version
     c = stats.conclusion
@@ -268,6 +269,7 @@ def render_report(stats: StatsResult, charts: Optional[Dict[str, str]] = None,
     parts = []
     # 正文不输出 H1 标题：飞书知识库节点标题即文档名（另有页面顶部 H1 展示），
     # 重复会压字；章节标题整体上调一级（原二级→一级）承接层级。
+    # 本地 md 文件产物的 H1 标题行由 main._with_local_title 落盘时补加，不影响推送正文。
 
     # 1. 引言
     parts.append("# 1. 引言\n")
@@ -378,7 +380,8 @@ def render_report(stats: StatsResult, charts: Optional[Dict[str, str]] = None,
     if defect_bitable_inline:
         # C：正文只写计数与引导，多维表格实体由推送环节内嵌到本文档末尾（失败则降级为仅本段说明）。
         parts.append("# 6. 缺陷清单\n")
-        parts.append(T.defect_bitable_inline_note(len(stats.postponed_bugs), len(stats.active_bugs)) + "\n")
+        parts.append(T.defect_bitable_inline_note(len(stats.postponed_bugs), len(stats.active_bugs),
+                                                  zentao_bugs_url) + "\n")
     else:
         # 空类不展示对应小节：只剩一类时顺次重编号（如 6.1 空则延期/激活只出 6.1），两类皆空则整节连标题一起不显示。
         lists = [("延期处理缺陷清单", stats.postponed_bugs, "本版本无「延期处理且未关闭」的缺陷。"),
@@ -386,7 +389,7 @@ def render_report(stats: StatsResult, charts: Optional[Dict[str, str]] = None,
         shown = [item for item in lists if item[1]]
         if shown:
             parts.append("# 6. 缺陷清单\n")
-            parts.append(T.DEFECT_LIST_NOTE + "\n")
+            parts.append(T.defect_list_note(zentao_bugs_url) + "\n")
             for i, (title, rows, empty_msg) in enumerate(shown, 1):
                 parts.append(f"## 6.{i} {title}\n")
                 parts.append(_defect_table(rows, empty_msg) + "\n")
