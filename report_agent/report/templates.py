@@ -83,7 +83,8 @@ def scope_table(rows, top_modules: int = 0) -> str:
     """2.1 测试范围表：V2-4 从本版本测试用例表接地到可信条目时渲染真实范围（模块 | 描述）。
 
     rows 为 [{"module","desc","case_count"}, ...]（模块与功能点逐字来自原文）。
-    空/None 由调用方回退 TEST_SCOPE_TABLE 占位。case_count 不展示，只用于「前 N 行」排序。
+    空/None 由调用方回退 TEST_SCOPE_TABLE 占位。case_count 不展示，只用于「前 N 行」排序
+    （用例条数以正文文字说明，不占表列，见 renderer 的 2.1 处理）。
 
     top_modules>0 且模块数超过它时收敛行数：按用例数降序（同数保持原文顺序，sorted 稳定）取前 N 行，
     其余合并为末行「其他（M 个模块）」，描述列逐字列出其余模块名（最多 8 个，超出以…收尾）。

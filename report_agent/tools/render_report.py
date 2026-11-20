@@ -33,18 +33,27 @@ class RenderReportTool(Tool):
         ref_links = {**(project_doc_links or {}), **doc_index, **self._resolve_ref_links(product_name, build)}
         test_scope = self._resolve_test_scope(product_name, build)
         test_env = self._resolve_test_env(product_name)
+        # scope.exec_stats 开启且接地到用例时，把用例聚合行汇总为执行概况（供 2.1 用例条数文字 + 3.3）；
+        # 关时 case_summary=None，渲染输出与现状逐字一致。
+        case_summary = None
+        scope_cfg = getattr(self.cfg, "scope", None) if self.cfg is not None else None
+        if test_scope and scope_cfg is not None and getattr(scope_cfg, "exec_stats", False):
+            from ..report.cases import summarize_case_exec
+            case_summary = summarize_case_exec(test_scope)
         embed = self._defect_embed_mode(stats_obj)
         # V2-6 关闭构成展示开关（默认关；关时 4.1.2 整节不出现，渲染与现状逐字一致）
         closure = bool(self.cfg is not None and getattr(getattr(self.cfg, "report", None), "closure_breakdown", False))
         markdown = render_report(stats_obj, charts=charts, ref_links=ref_links,
                                  defect_bitable_inline=embed, test_scope=test_scope, test_env=test_env,
                                  scope_top_modules=int(getattr(getattr(self.cfg, "scope", None), "top_modules", 0) or 0),
-                                 closure_breakdown=closure)
+                                 closure_breakdown=closure,
+                                 case_summary=case_summary)
         meta = {"ref_doc_links": ref_links, "defect_bitable_embed": embed,
                 "test_scope_filled": bool(test_scope),
                 "test_scope_modules": len(test_scope or []),
                 "test_env_filled": bool(test_env and test_env.get("rows")),
                 "doc_index_filled": bool(doc_index),
+                "case_stats_filled": bool(case_summary and case_summary.get("exec_available")),
                 "closure_breakdown": closure}
         # V2-7 报告数字自检：默认关，开启时对渲染结果二次核对，不一致按统计源值重渲染并标注。
         if self.cfg is not None and getattr(getattr(self.cfg, "report", None), "numeric_selfcheck", False):
@@ -119,7 +128,8 @@ class RenderReportTool(Tool):
 
             kw = dict(module_col=getattr(scope_cfg, "module_col", "模块分类"),
                       name_col=getattr(scope_cfg, "name_col", "用例名称"),
-                      group_level=getattr(scope_cfg, "group_level", "top"))
+                      group_level=getattr(scope_cfg, "group_level", "top"),
+                      exec_col=getattr(scope_cfg, "exec_col", "执行结果"))
             title = getattr(scope_cfg, "case_doc_title", "测试用例")
             file_token = client.find_doc_obj_token(product_name, build, title, obj_type="file")
             if file_token:

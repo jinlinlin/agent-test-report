@@ -81,6 +81,40 @@ def _tester_table(stats: StatsResult) -> str:
     return "\n".join(rows)
 
 
+def _case_exec_section(case_summary: Dict) -> str:
+    """3.3 测试用例执行概况：只搬运 cases.summarize_case_exec 算好的数值，不做任何计算。
+
+    执行结果可用（用例表带「执行结果」列）：总量句 + 分模块执行表；
+    不可用：如实只报用例条数并声明不输出通过率（防幻觉：不补造任何数字）。
+    """
+    cs = case_summary
+    lines = []
+    if cs.get("exec_available"):
+        other_part = f"、其他 {cs['other']} 条" if cs.get("other") else ""
+        lines.append(
+            f"本版本共设计测试用例 {cs['total']} 条，实际执行 {cs['executed']} 条（执行率 {cs['exec_rate']}）；"
+            f"通过 {cs['passed']} 条、失败 {cs['failed']} 条、阻塞 {cs['blocked']} 条、未执行 {cs['not_run']} 条"
+            f"{other_part}，执行通过率为 {cs['pass_rate']}（通过 ÷ 已执行）。\n"
+        )
+        lines.append("| 模块 | 用例数 | 已执行 | 通过 | 失败 | 阻塞 | 未执行 | 通过率 |")
+        lines.append("| ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- |")
+        for m in cs.get("by_module") or []:
+            lines.append(
+                f"| {m['module']} | {m['case_count']} | {m['executed']} | {m['passed']} | {m['failed']} "
+                f"| {m['blocked']} | {m['not_run']} | {m['pass_rate'] or '—'} |"
+            )
+        lines.append(
+            f"| **总计** | **{cs['total']}** | **{cs['executed']}** | **{cs['passed']}** | **{cs['failed']}** "
+            f"| **{cs['blocked']}** | **{cs['not_run']}** | **{cs['pass_rate']}** |"
+        )
+    else:
+        lines.append(
+            f"本版本共设计测试用例 {cs['total']} 条。用例表未记录「执行结果」，"
+            "不输出执行率与通过率（依据防幻觉原则，不补造数字）。\n"
+        )
+    return "\n".join(lines)
+
+
 # ---- 第 6 节缺陷清单：禅道枚举值→中文、单元格净化、日期格式化 ----
 _TAG_RE = re.compile(r"<[^>]+>")
 _NULLISH = {"", "null", "none", "0000-00-00 00:00:00", "0000-00-00"}
@@ -225,7 +259,8 @@ def render_report(stats: StatsResult, charts: Optional[Dict[str, str]] = None,
                   test_scope: Optional[List[Dict[str, str]]] = None,
                   test_env: Optional[Dict[str, object]] = None,
                   scope_top_modules: int = 0,
-                  closure_breakdown: bool = False) -> str:
+                  closure_breakdown: bool = False,
+                  case_summary: Optional[Dict] = None) -> str:
     s = stats.summary
     v = stats.version
     c = stats.conclusion
@@ -250,6 +285,10 @@ def render_report(stats: StatsResult, charts: Optional[Dict[str, str]] = None,
         # V2-4：从本版本目录下的测试用例表接地提取的范围（模块=菜单目录，描述=功能点）
         # scope_top_modules>0 且模块数超它时收敛为前 N 行 + 「其他」行（用例数只用于排序，不上表）
         parts.append(T.scope_table(test_scope, top_modules=scope_top_modules) + "\n")
+        # 用例条数以文字说明不占表列（用户 2026-11-20 拍板）；总数取自提取层算好的 case_summary
+        if case_summary:
+            parts.append(f"> 本次测试范围共覆盖测试用例 {case_summary['total']} 条，"
+                         "执行概况详见 3.3。\n")
     else:
         parts.append(T.TEST_SCOPE_TABLE + "\n")
         parts.append("> 模块清单可参照 4.1.1 缺陷分布自动列出；描述需人工或 V2 补齐。\n")
@@ -274,6 +313,10 @@ def render_report(stats: StatsResult, charts: Optional[Dict[str, str]] = None,
     parts.append("| 测试阶段 | 开始时间 | 结束时间 |")
     parts.append("| ---------------- | ------------ | ------------ |")
     parts.append(f"| {v.name or '版本'} | {v.test_start or '待补充'} | {v.test_end or '待补充'} |\n")
+    # 3.3 测试用例执行概况（scope.exec_stats 开启才出；关时 case_summary=None，本节整体不出现，与现状逐字一致）
+    if case_summary:
+        parts.append("## 3.3 测试用例执行概况\n")
+        parts.append(_case_exec_section(case_summary) + "\n")
 
     # 4. 功能测试执行及测试结果
     parts.append("# 4. 功能测试执行及测试结果\n")
@@ -320,6 +363,12 @@ def render_report(stats: StatsResult, charts: Optional[Dict[str, str]] = None,
         for e in c.evidence:
             parts.append(f"- {e}")
         parts.append("")
+        # 用例执行概况作为质量背景引用（不影响发布准入门槛，准入仍只按缺陷四项）
+        if case_summary and case_summary.get("exec_available"):
+            parts.append(
+                f"> 用例执行背景（不作准入判定）：共 {case_summary['total']} 条、"
+                f"执行 {case_summary['executed']} 条，执行通过率 {case_summary['pass_rate']}。\n"
+            )
         parts.append("## 5.1 发布建议\n")
         parts.append(c.release_advice + "\n")
     else:

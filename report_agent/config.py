@@ -163,6 +163,9 @@ class ScopeConfig:
         （用例数只用于排序，不写进报告）；默认 0=不限制，按原文顺序全列。
     module_groups：人工确认的「一级菜单 → 成员模块」归并映射（settings.yaml 里写 name/modules），
         代码默认空=不归并；只把用例表已有的模块名归到组名下，不生成新名称（详见 cases.apply_module_groups）。
+    exec_stats：用例执行统计（默认关）——开启后 2.1 范围表后补一句用例总条数文字（表列不变），
+        并新增 3.3 测试用例执行概况（按「执行结果」列聚合通过率）；关时报告与现状逐字一致。
+    exec_col：用例表执行结果列表头（模糊包含匹配）；列不存在时如实只出用例条数、不输出通过率。
     """
     enabled: bool = False
     case_doc_title: str = "测试用例"
@@ -171,6 +174,8 @@ class ScopeConfig:
     group_level: str = "top"
     top_modules: int = 0
     module_groups: tuple = ()
+    exec_stats: bool = False
+    exec_col: str = "执行结果"
 
 
 @dataclass
@@ -349,6 +354,8 @@ def load_config(settings_path: Path | str = SETTINGS_PATH, **overrides) -> Confi
                  tuple(str(m).strip() for m in (g.get("modules") or []) if str(m).strip()))
                 for g in (_get(_get(raw, "scope", {}), "module_groups", ()) or [])
                 if isinstance(g, dict) and str(g.get("name", "")).strip()),
+            exec_stats=str(_get(_get(raw, "scope", {}), "exec_stats", False)).lower() in ("1", "true", "yes", "on"),
+            exec_col=_get(_get(raw, "scope", {}), "exec_col", "执行结果"),
         ),
         test_env=TestEnvConfig(
             enabled=str(_get(_get(raw, "test_env", {}), "enabled", False)).lower() in ("1", "true", "yes", "on"),
