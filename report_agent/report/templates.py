@@ -70,6 +70,13 @@ TEST_SCOPE_TABLE = (
     "| 【待补充，可参照 4.1.1 模块分布】 | 【待补充】 |"
 )
 
+# 2.1 三列形态占位表（scope.category_col 开启且接地不到所属模块时用，与提取回退无关的纯占位场景）
+TEST_SCOPE_TABLE_3COL = (
+    "| 模块 | 分类 | 描述 |\n"
+    "| ------------ | ------------ | -------------------------------- |\n"
+    "| 【待补充，可参照 4.1.1 模块分布】 | 【待补充】 | 【待补充】 |"
+)
+
 
 def _scope_int(row) -> int:
     """读一个条目的用例数，缺失/非法一律当 0（只用于排序，不进报告展示）。"""
@@ -79,16 +86,20 @@ def _scope_int(row) -> int:
         return 0
 
 
-def scope_table(rows, top_modules: int = 0) -> str:
-    """2.1 测试范围表：V2-4 从本版本测试用例表接地到可信条目时渲染真实范围（模块 | 描述）。
+def scope_table(rows, top_modules: int = 0, three_col: bool = False) -> str:
+    """2.1 测试范围表：V2-4 从本版本测试用例表接地到可信条目时渲染真实范围。
 
-    rows 为 [{"module","desc","case_count"}, ...]（模块与功能点逐字来自原文）。
-    空/None 由调用方回退 TEST_SCOPE_TABLE 占位。case_count 不展示，只用于「前 N 行」排序
-    （用例条数以正文文字说明，不占表列，见 renderer 的 2.1 处理）。
+    rows 为 [{"module","desc","case_count"}, ...]（模块与功能点逐字来自原文）；
+    three_col=True 时为「模块 | 分类 | 描述」三列（2026-11-20 用户拍板）：行需带提取层派生的
+    owner（所属模块）/category（剥前缀后的组名），同模块多分类时模块名只在该模块首行写、
+    续行留空近似合并单元格（Markdown→pandoc→飞书链路不支持真 rowspan，伪合并已与用户确认）；
+    调用方保证三列只在全部行 owner 非空时开启，owner 缺失自动回退两列。
+    空/None 由调用方回退 TEST_SCOPE_TABLE（三列形态用 TEST_SCOPE_TABLE_3COL）占位。
+    case_count 不展示，只用于「前 N 行」排序（用例条数以正文文字说明，见 renderer 的 2.1 处理）。
 
-    top_modules>0 且模块数超过它时收敛行数：按用例数降序（同数保持原文顺序，sorted 稳定）取前 N 行，
-    其余合并为末行「其他（M 个模块）」，描述列逐字列出其余模块名（最多 8 个，超出以…收尾）。
-    模块数未超阈值或 top_modules=0 时按原文顺序全列，不排序、不合并。
+    top_modules>0 且条目数超过它时收敛行数：按用例数降序（同数保持原文顺序，sorted 稳定）取前 N 行，
+    其余合并为末行「其他（M 个…）」，描述列逐字列出其余模块名（最多 8 个，超出以…收尾）。
+    条目数未超阈值或 top_modules=0 时按原文顺序全列，不排序、不合并。
     """
     items = [dict(r or {}) for r in (rows or [])]
     limit = int(top_modules or 0)
@@ -97,6 +108,31 @@ def scope_table(rows, top_modules: int = 0) -> str:
     if limit and len(items) > limit:
         ranked = sorted(items, key=lambda r: -_scope_int(r))
         head, tail = ranked[:limit], ranked[limit:]
+    if three_col:
+        # 同所属模块的行必须相邻才能体现伪合并：按 owner 首次出现序稳定重排（组内保持排序后的序）
+        seen: list = []
+        for r in head:
+            o = str(r.get("owner", "") or "").strip()
+            if o not in seen:
+                seen.append(o)
+        head = sorted(head, key=lambda r: seen.index(str(r.get("owner", "") or "").strip()))
+        out = ["| 模块 | 分类 | 描述 |",
+               "| ------------ | ------------ | -------------------------------- |"]
+        last_owner = None
+        for r in head:
+            owner = str(r.get("owner", "") or "").strip()
+            cat = (str(r.get("category", "") or "").strip()
+                   or str(r.get("module", "")).strip() or "【待补充】")
+            desc = str(r.get("desc", "")).strip() or "—"
+            # 首行写模块名、续行留空（伪合并）；owner 变化即重新写名
+            cell = owner if owner != last_owner else ""
+            last_owner = owner
+            out.append(f"| {cell} | {cat} | {desc} |")
+        if tail:
+            names = [str(r.get("module", "")).strip() or "【待补充】" for r in tail]
+            shown = "、".join(names[:8]) + ("…" if len(names) > 8 else "")
+            out.append(f"| 其他（{len(names)} 个分类） | — | {shown} |")
+        return "\n".join(out)
     out = ["| 模块 | 描述 |", "| ------------ | -------------------------------- |"]
     for r in head:
         module = str(r.get("module", "")).strip() or "【待补充】"

@@ -278,6 +278,7 @@ def render_report(stats: StatsResult, charts: Optional[Dict[str, str]] = None,
                   scope_top_modules: int = 0,
                   closure_breakdown: bool = False,
                   case_summary: Optional[Dict] = None,
+                  scope_three_col: bool = False,
                   zentao_bugs_url: str = "") -> str:
     s = stats.summary
     v = stats.version
@@ -301,15 +302,17 @@ def render_report(stats: StatsResult, charts: Optional[Dict[str, str]] = None,
     parts.append("# 2. 测试概要\n")
     parts.append("## 2.1 测试范围\n")
     if test_scope:
-        # V2-4：从本版本目录下的测试用例表接地提取的范围（模块=菜单目录，描述=功能点）
-        # scope_top_modules>0 且模块数超它时收敛为前 N 行 + 「其他」行（用例数只用于排序，不上表）
-        parts.append(T.scope_table(test_scope, top_modules=scope_top_modules) + "\n")
+        # V2-4：从本版本目录下的测试用例表接地提取的范围（三列形态：模块=所属模块列、分类=组名剥前缀；
+        # 两列形态：模块=菜单目录、描述=功能点；scope_three_col 由工具层按 owner 接地情况门控）
+        # scope_top_modules>0 且条目数超它时收敛为前 N 行 + 「其他」行（用例数只用于排序，不上表）
+        parts.append(T.scope_table(test_scope, top_modules=scope_top_modules,
+                                   three_col=scope_three_col) + "\n")
         # 用例条数以文字说明不占表列（用户 2026-11-20 拍板）；总数取自提取层算好的 case_summary
         if case_summary:
             parts.append(f"> 本次测试范围共覆盖测试用例 {case_summary['total']} 条，"
                          "执行概况详见 3.3。\n")
     else:
-        parts.append(T.TEST_SCOPE_TABLE + "\n")
+        parts.append((T.TEST_SCOPE_TABLE_3COL if scope_three_col else T.TEST_SCOPE_TABLE) + "\n")
         parts.append("> 模块清单可参照 4.1.1 缺陷分布自动列出；描述需人工或 V2 补齐。\n")
     parts.append("## 2.2 测试环境\n")
     if test_env and test_env.get("rows"):

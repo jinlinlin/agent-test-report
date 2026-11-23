@@ -42,6 +42,11 @@ class RenderReportTool(Tool):
         if test_scope and scope_cfg is not None and getattr(scope_cfg, "exec_stats", False):
             from ..report.cases import summarize_case_exec
             case_summary = summarize_case_exec(test_scope)
+        # 2.1 三列形态（scope.category_col）：开关开且接地到的每一行都带非空所属模块才三列；
+        # 未接地（占位表）时跟随开关；接地到但用表无「所属模块」列/有行未填 → 回退两列，不编造 owner。
+        three_col_cfg = bool(scope_cfg is not None and getattr(scope_cfg, "category_col", False))
+        scope_three_col = three_col_cfg and (
+            not test_scope or all(str(r.get("owner", "") or "").strip() for r in test_scope))
         embed = self._defect_embed_mode(stats_obj)
         # V2-6 关闭构成展示开关（默认关；关时 4.1.2 整节不出现，渲染与现状逐字一致）
         closure = bool(self.cfg is not None and getattr(getattr(self.cfg, "report", None), "closure_breakdown", False))
@@ -50,10 +55,12 @@ class RenderReportTool(Tool):
                                  scope_top_modules=int(getattr(getattr(self.cfg, "scope", None), "top_modules", 0) or 0),
                                  closure_breakdown=closure,
                                  case_summary=case_summary,
+                                 scope_three_col=scope_three_col,
                                  zentao_bugs_url=self._bugs_browse_url(product_id))
         meta = {"ref_doc_links": ref_links, "defect_bitable_embed": embed,
                 "test_scope_filled": bool(test_scope),
                 "test_scope_modules": len(test_scope or []),
+                "test_scope_three_col": scope_three_col,
                 "test_env_filled": bool(test_env and test_env.get("rows")),
                 "doc_index_filled": bool(doc_index),
                 "case_stats_filled": bool(case_summary and case_summary.get("exec_available")),
@@ -123,8 +130,13 @@ class RenderReportTool(Tool):
             return None
         scope = self._scope_from_cases(FeishuClient(f), product_name, build, scope_cfg)
         # 人工确认的分组映射（可选）：把扁平的细模块归并到一级菜单，只改名不发明、未命中原样保留
-        from ..report.cases import apply_module_groups
-        return apply_module_groups(scope, getattr(scope_cfg, "module_groups", ()) or ())
+        from ..report.cases import apply_display_columns, apply_module_groups
+        scope = apply_module_groups(scope, getattr(scope_cfg, "module_groups", ()) or ())
+        # 三列形态（scope.category_col）：归并后再派生展示字段 owner/category（剥前缀是纯字符串规则）；
+        # 开关关时不调用，行结构与两列形态上线前逐字一致
+        if scope and getattr(scope_cfg, "category_col", False):
+            scope = apply_display_columns(scope)
+        return scope
 
     def _scope_from_cases(self, client, product_name: str, build: str, scope_cfg):
         """定位本版本目录下的测试用例表并聚合为范围；任一环节失败返回 None（回退占位）。
@@ -142,7 +154,8 @@ class RenderReportTool(Tool):
             kw = dict(module_col=getattr(scope_cfg, "module_col", "模块分类"),
                       name_col=getattr(scope_cfg, "name_col", "用例名称"),
                       group_level=getattr(scope_cfg, "group_level", "top"),
-                      exec_col=getattr(scope_cfg, "exec_col", "执行结果"))
+                      exec_col=getattr(scope_cfg, "exec_col", "执行结果"),
+                      owner_col=getattr(scope_cfg, "owner_col", "所属模块"))
             title = getattr(scope_cfg, "case_doc_title", "测试用例")
             file_token = client.find_doc_obj_token(product_name, build, title, obj_type="file")
             if file_token:

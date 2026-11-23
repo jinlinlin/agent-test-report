@@ -166,6 +166,10 @@ class ScopeConfig:
     exec_stats：用例执行统计（默认关）——开启后 2.1 范围表后补一句用例总条数文字（表列不变），
         并新增 3.3 测试用例执行概况（按「执行结果」列聚合通过率）；关时报告与现状逐字一致。
     exec_col：用例表执行结果列表头（模糊包含匹配）；列不存在时如实只出用例条数、不输出通过率。
+    category_col：2.1 范围表三列形态（默认关，2026-11-20 用户拍板）——模块=用例表「所属模块」列、
+        分类=组名（开头与所属模块相同的前缀剥掉）、描述=现状；同模块续行留空近似合并单元格。
+        用表无该列或有行未填时自动回退两列；关时报告与现状逐字一致。
+    owner_col：用例表所属模块列表头（模糊包含匹配；与模块列命中同一列时视为无该列）。
     """
     enabled: bool = False
     case_doc_title: str = "测试用例"
@@ -176,6 +180,8 @@ class ScopeConfig:
     module_groups: tuple = ()
     exec_stats: bool = False
     exec_col: str = "执行结果"
+    category_col: bool = False
+    owner_col: str = "所属模块"
 
 
 @dataclass
@@ -356,6 +362,8 @@ def load_config(settings_path: Path | str = SETTINGS_PATH, **overrides) -> Confi
                 if isinstance(g, dict) and str(g.get("name", "")).strip()),
             exec_stats=str(_get(_get(raw, "scope", {}), "exec_stats", False)).lower() in ("1", "true", "yes", "on"),
             exec_col=_get(_get(raw, "scope", {}), "exec_col", "执行结果"),
+            category_col=str(_get(_get(raw, "scope", {}), "category_col", False)).lower() in ("1", "true", "yes", "on"),
+            owner_col=_get(_get(raw, "scope", {}), "owner_col", "所属模块"),
         ),
         test_env=TestEnvConfig(
             enabled=str(_get(_get(raw, "test_env", {}), "enabled", False)).lower() in ("1", "true", "yes", "on"),

@@ -17,6 +17,11 @@
 若用例表把「模块分类」填成扁平名（无层级），一级聚合会产出几十个菜单；此时可由**人工确认的分组映射**
 （`scope.module_groups`，只存组名与成员模块名）把细模块归并到一级菜单，见 `apply_module_groups`：
 归并只改名与相加，成员名逐字引用，不生成任何新名称。
+
+2.1 三列形态（模块 | 分类 | 描述，2026-11-20 用户拍板）：用例表新增「所属模块」列后，
+模块列逐字读该列（不再从组名拆），分类列=组名（开头与所属模块相同的前缀剥掉，见 `apply_display_columns`）。
+提取按 (所属模块, 模块分类) 二元组为聚合键；组内多分类共用所属模块时，sheets 合并单元格只有首格有值，
+空值沿用最近的非空所属模块（合并单元格的表格语义，非臆造）；组跨多个所属模块时按模块拆行、不合并。
 """
 from __future__ import annotations
 
@@ -98,6 +103,7 @@ def extract_scope_from_rows(
     name_col: str = "用例名称",
     group_level: str = "top",
     exec_col: str = "执行结果",
+    owner_col: str = "所属模块",
 ) -> Optional[List[Dict[str, str]]]:
     """解析行矩阵（含表头行），返回 [{"module","desc","case_count", 执行分桶计数...}]；不可信返回 None。
 
@@ -107,6 +113,9 @@ def extract_scope_from_rows(
     group_level："top"=按一级菜单聚合（默认）；"full"=按完整模块路径逐条列出。
     exec_col：执行结果列表头（命中则按 _exec_bucket 逐模块聚合 passed/failed/blocked/not_run/other，
         并标 exec_available=True；未命中则各分桶计 0、exec_available=False，上层据此如实不输出通过率，不臆造）。
+    owner_col：所属模块列表头；命中时每行附加 "owner" 字段并按 (所属模块, 模块) 二元组聚合
+        （空值沿用最近非空，兼容合并单元格）；与 module 列命中同一列（如表头只有「所属模块分类」）
+        或未命中时不附加该字段，行为与两列形态上线前逐字一致。
     """
     if not rows:
         return None
@@ -131,25 +140,30 @@ def extract_scope_from_rows(
     name_pos = _find_col(rows[header_idx], str(name_col or "").strip())
     exec_pos = _find_col(rows[header_idx], str(exec_col or "").strip())
     exec_available = exec_pos >= 0
+    owner_pos = _find_col(rows[header_idx], str(owner_col or "").strip())
+    if owner_pos == mod_pos:
+        owner_pos = -1  # 「所属模块」与「模块分类」命中同一列（如表头只有「所属模块分类」）：视为无独立所属模块列
 
     # 聚合：按菜单模块保序收集功能点（描述）与计数，并逐模块累计执行结果分桶
-    order: List[str] = []
+    # 有所属模块列时聚合键为 (owner, module) 二元组，同名模块分属不同所属模块时各自成行
+    order: List[object] = []
     details: Dict[str, List[str]] = {}
     counts: Dict[str, int] = {}
     exec_stats: Dict[str, Dict[str, int]] = {}
 
-    def _record(module: str, detail: str, bucket: str = "") -> None:
-        if module not in counts:
-            counts[module] = 0
-            details[module] = []
-            exec_stats[module] = {k: 0 for k in _EXEC_KEYS}
-            order.append(module)
-        counts[module] += 1
-        if detail and detail not in details[module]:
-            details[module].append(detail)
+    def _record(key, detail: str, bucket: str = "") -> None:
+        if key not in counts:
+            counts[key] = 0
+            details[key] = []
+            exec_stats[key] = {k: 0 for k in _EXEC_KEYS}
+            order.append(key)
+        counts[key] += 1
+        if detail and detail not in details[key]:
+            details[key].append(detail)
         if bucket:
-            exec_stats[module][bucket] += 1
+            exec_stats[key][bucket] += 1
 
+    last_owner = ""
     for row in rows[header_idx + 1:]:
         mod_val = str(row[mod_pos] or "").strip() if mod_pos < len(row) else ""
         if not mod_val:
@@ -166,21 +180,31 @@ def extract_scope_from_rows(
         bucket = ""
         if exec_available and exec_pos < len(row):
             bucket = _exec_bucket(row[exec_pos])
-        _record(module, detail, bucket)
+        if owner_pos >= 0:
+            ov = str(row[owner_pos] or "").strip() if owner_pos < len(row) else ""
+            if ov:
+                last_owner = ov  # 合并单元格只有首格有值：空值沿用最近的非空所属模块
+            key = (last_owner, module)
+        else:
+            key = module
+        _record(key, detail, bucket)
 
     if not order:
         return None
 
-    return [
-        {
-            "module": m,
-            "desc": "、".join(details[m]),
-            "case_count": counts[m],
+    result = []
+    for k in order:
+        entry = {
+            "module": k[1] if isinstance(k, tuple) else k,
+            "desc": "、".join(details[k]),
+            "case_count": counts[k],
             "exec_available": exec_available,
-            **exec_stats[m],
+            **exec_stats[k],
         }
-        for m in order
-    ]
+        if owner_pos >= 0:
+            entry["owner"] = k[0]
+        result.append(entry)
+    return result
 
 
 def extract_scope_from_cases(
@@ -189,6 +213,7 @@ def extract_scope_from_cases(
     name_col: str = "用例名称",
     group_level: str = "top",
     exec_col: str = "执行结果",
+    owner_col: str = "所属模块",
 ) -> Optional[List[Dict[str, str]]]:
     """解析 xlsx 字节流（薄壳：openpyxl 读首个 sheet 的行 → 转调 extract_scope_from_rows）。
 
@@ -208,7 +233,8 @@ def extract_scope_from_cases(
     if ws is None:
         return None
     return extract_scope_from_rows(list(ws.iter_rows(values_only=True)), module_col=module_col,
-                                   name_col=name_col, group_level=group_level, exec_col=exec_col)
+                                   name_col=name_col, group_level=group_level, exec_col=exec_col,
+                                   owner_col=owner_col)
 
 
 def _as_count(value) -> int:
@@ -228,6 +254,8 @@ def apply_module_groups(scope, groups) -> Optional[List[Dict[str, str]]]:
     **未命中任何组的模块原样保留**并附在组行之后（绝不丢数据）。
     组行描述=已归并成员模块名逐字以「、」连接（按用例表出现顺序，不是映射声明顺序）；
     case_count=已归并模块的用例数合计（只供排序/对账，是否上表由渲染层定）。
+    成员行带 owner（所属模块）时：组跨多个所属模块则按 owner 拆成多行（各自相加，不合并、不丢数），
+    组行逐行继承对应 owner。
     groups 为空/None 或 scope 为空时原样返回，行为与归并上线前逐字一致。
     """
     if not scope or not groups:
@@ -252,16 +280,53 @@ def apply_module_groups(scope, groups) -> Optional[List[Dict[str, str]]]:
         if not hits:
             continue
         used.update(str(r.get("module", "")).strip() for r in hits)
-        out.append({
-            "module": name,
-            "desc": "、".join(str(r.get("module", "")).strip() for r in hits),
-            "case_count": sum(_as_count(r.get("case_count")) for r in hits),
-            # 执行分桶随归并相加（只相加不重算）；成员只要有一行带执行结果就归为可用
-            "exec_available": any(bool(r.get("exec_available")) for r in hits),
-            **{k: sum(_as_count(r.get(k)) for r in hits) for k in _EXEC_KEYS},
-        })
+        # 按所属模块分桶（无 owner 时全部落入同一空串桶，行为与拆行上线前一致）；dict 保插入序
+        by_owner: Dict[str, list] = {}
+        for r in hits:
+            by_owner.setdefault(str(r.get("owner", "") or "").strip(), []).append(r)
+        for own, sub in by_owner.items():
+            row = {
+                "module": name,
+                "desc": "、".join(str(r.get("module", "")).strip() for r in sub),
+                "case_count": sum(_as_count(r.get("case_count")) for r in sub),
+                # 执行分桶随归并相加（只相加不重算）；成员只要有一行带执行结果就归为可用
+                "exec_available": any(bool(r.get("exec_available")) for r in sub),
+                **{k: sum(_as_count(r.get(k)) for r in sub) for k in _EXEC_KEYS},
+            }
+            if any("owner" in r for r in sub):
+                row["owner"] = own
+            out.append(row)
     out.extend(r for r in scope if str(r.get("module", "")).strip() not in used)
     return out or scope
+
+
+def _strip_owner_prefix(name: str, owner: str) -> str:
+    """名称以「owner+分隔符」开头则剥掉该前缀返回余段；否则空串（调用方据此回退整名）。"""
+    if not owner or not name:
+        return ""
+    for sep in _SEPARATORS:
+        if name.startswith(owner + sep):
+            return name[len(owner) + len(sep):].strip()
+    return ""
+
+
+def apply_display_columns(scope: Optional[List[Dict[str, object]]]) -> List[Dict[str, object]]:
+    """为 2.1 三列表派生展示字段 owner / category（纯字符串规则，不发明任何名称）。
+
+    - owner = 行的「所属模块」（无则空串；空串行由调用方回退两列形态，不在此处理）；
+    - category = 组/模块名开头恰为「owner+分隔符」时剥掉该前缀（云文档-文档类型与管理 → 文档类型与管理），
+      前缀不同则整名保留（所属模块=云文档 时「第三方集成-飞书应用」原样上表，与用户 2026-11-20 例表一致）。
+    在 apply_module_groups 之后调用（组名不再变），只加字段不改既有键。
+    """
+    out = []
+    for r in scope or []:
+        r2 = dict(r)
+        owner = str(r.get("owner", "") or "").strip()
+        name = str(r.get("module", "") or "").strip()
+        r2["owner"] = owner
+        r2["category"] = _strip_owner_prefix(name, owner) or name
+        out.append(r2)
+    return out
 
 
 def summarize_case_exec(scope: Optional[List[Dict[str, object]]]) -> Optional[Dict[str, object]]:
