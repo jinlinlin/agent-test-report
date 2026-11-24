@@ -174,15 +174,15 @@ def defect_bitable_inline_note(postponed_count: int, active_count: int,
                               zentao_url: str = "") -> str:
     """第 6 节以文档内嵌多维表格展开时的正文（只给计数与引导，链接与宽表都不写；实际表由推送环节插入）。
 
-    无 zentao_url 时与旧版逐字一致（含原文「缺陷详细见bug清单」句式，保回退行为不变）。
+    遗留未解决数与延期处理数为统计数字，按全报告统一口径加粗显示。
     """
     tail = _ZENTAO_LINK_TAIL.format(url=zentao_url) if zentao_url else "完整缺陷明细仍可在禅道按版本筛选查阅。"
     if zentao_url:
         return (
-            f"本次测试共汇总遗留未解决 {active_count} 条、延期处理 {postponed_count} 条，"
+            f"本次测试共汇总遗留未解决 **{active_count}** 条、延期处理 **{postponed_count}** 条，"
             "缺陷详细见下方内嵌清单。" + tail
         )
     return (
-        f"本次测试共汇总遗留未解决 {active_count} 条、延期处理 {postponed_count} 条，"
+        f"本次测试共汇总遗留未解决 **{active_count}** 条、延期处理 **{postponed_count}** 条，"
         "缺陷详细见bug清单。" + tail
     )

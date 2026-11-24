@@ -52,21 +52,21 @@ def test_clean_render_zero_diff_untouched():
 
 def test_tampered_41_restated_from_source_with_annotation():
     st = _stats()
-    md = render_report(st).replace("累计发现缺陷 12 个", "累计发现缺陷 99 个")
+    md = render_report(st).replace("累计发现缺陷 **12** 个", "累计发现缺陷 **99** 个")
     out, rep = apply(md, st)
     assert rep["ok"] is False
     assert rep["corrected"] == [{"field": "缺陷总数", "stated": "99", "expected": "12"}]
-    assert "累计发现缺陷 12 个" in out  # 已按统计源值重渲染
+    assert "累计发现缺陷 **12** 个" in out  # 已按统计源值重渲染
     assert "99" not in out.splitlines()[0]  # 原错误值不在标注首行
     assert out.startswith("> ⚠️ **数字自检（V2-7）**")
 
 
 def test_tampered_42_restated_from_source():
     st = _stats()
-    md = render_report(st).replace("激活率 25.00%。", "激活率 50.00%。")
+    md = render_report(st).replace("激活率 **25.00%**。", "激活率 **50.00%**。")
     out, rep = apply(md, st)
     assert rep["corrected"] == [{"field": "激活率", "stated": "50.00%", "expected": "25.00%"}]
-    assert "激活率 25.00%。" in out
+    assert "激活率 **25.00%**。" in out
     assert "数字自检（V2-7）" in out
 
 

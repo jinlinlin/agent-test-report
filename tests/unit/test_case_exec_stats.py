@@ -87,7 +87,7 @@ def test_render_section_33_and_21_case_count_text():
     assert "（通过 ÷ 已执行）" in md
     # 2.1：表保持两列，用例条数以文字句给出（用户 2026-11-20 拍板）
     assert "| 模块 | 描述 |" in md and "| 模块 | 描述 | 用例数 |" not in md
-    assert "本次测试范围共覆盖测试用例 6 条" in md
+    assert "本次测试范围共覆盖测试用例 **6** 条" in md
 
 
 def test_render_off_has_no_33_no_case_count_text():

@@ -124,7 +124,7 @@ def test_render_enabled_table_and_anchor():
     # 不再显示窗口细分文字
     assert "其中测试窗口内关闭" not in md
     # 4.1 主句与 4.2 之后章节不受影响
-    assert "累计发现缺陷 14 个" in md and "## 4.2 Bug 激活次数统计" in md
+    assert "累计发现缺陷 **14** 个" in md and "## 4.2 Bug 激活次数统计" in md
 
 
 def test_render_zero_assist_close_hides_section():

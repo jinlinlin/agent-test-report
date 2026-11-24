@@ -17,7 +17,7 @@ from report_agent.tools.statistics import compute_statistics
 URL = "http://zentao.test/zentao/bug-browse-17-0-all.html"
 OLD_NOTE = ("说明：下列清单内嵌本版本需重点关注的两类缺陷（延期处理、激活待解决），字段与禅道一致；"
             "完整缺陷明细仍可在禅道按版本筛选查阅。")
-OLD_INLINE = ("本次测试共汇总遗留未解决 1 条、延期处理 0 条，缺陷详细见bug清单。"
+OLD_INLINE = ("本次测试共汇总遗留未解决 **1** 条、延期处理 **0** 条，缺陷详细见bug清单。"
               "完整缺陷明细仍可在禅道按版本筛选查阅。")
 
 

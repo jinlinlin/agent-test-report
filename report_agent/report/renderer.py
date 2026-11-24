@@ -28,13 +28,19 @@ def _remaining_summary(stats: StatsResult) -> str:
     p3a = lv.get("P3").active if "P3" in lv else 0
     p4a = lv.get("P4").active if "P4" in lv else 0
     lines = ["\n发布后仍需跟踪以下遗留（不阻断准入门槛）："]
-    lines.append(f"- 待解决 {s.pending_resolve} 条"
-                 f"（含 P2 严重 {p2a} 条、P3 一般 {p3a} 条、P4 建议 {p4a} 条）")
+    lines.append(f"- 待解决 {_b(s.pending_resolve)} 条"
+                 f"（含 P2 严重 {_b(p2a)} 条、P3 一般 {_b(p3a)} 条、P4 建议 {_b(p4a)} 条）")
     if s.pending_accept:
-        lines.append(f"- 待验收 {s.pending_accept} 条")
+        lines.append(f"- 待验收 {_b(s.pending_accept)} 条")
     if s.postponed:
-        lines.append(f"- 延期处理 {s.postponed} 条")
+        lines.append(f"- 延期处理 {_b(s.postponed)} 条")
     return "\n".join(lines) + "\n"
+
+
+def _b(value) -> str:
+    """把单个统计数值包成 Markdown 加粗（**N**）。仅用于正文关键统计数字，
+    不碰表格（表格总计行已自带 **）、不碰门槛常量与「≥1 次」等固定措辞。"""
+    return f"**{value}**"
 
 
 def _module_table(stats: StatsResult) -> str:
@@ -107,11 +113,11 @@ def _case_exec_section(case_summary: Dict) -> str:
     cs = case_summary
     lines = []
     if cs.get("exec_available"):
-        other_part = f"、其他 {cs['other']} 条" if cs.get("other") else ""
+        other_part = f"、其他 {_b(cs['other'])} 条" if cs.get("other") else ""
         lines.append(
-            f"本版本共设计测试用例 {cs['total']} 条，实际执行 {cs['executed']} 条（执行率 {cs['exec_rate']}）；"
-            f"通过 {cs['passed']} 条、失败 {cs['failed']} 条、阻塞 {cs['blocked']} 条、未执行 {cs['not_run']} 条"
-            f"{other_part}，执行通过率为 {cs['pass_rate']}（通过 ÷ 已执行）。\n"
+            f"本版本共设计测试用例 {_b(cs['total'])} 条，实际执行 {_b(cs['executed'])} 条（执行率 {_b(cs['exec_rate'])}）；"
+            f"通过 {_b(cs['passed'])} 条、失败 {_b(cs['failed'])} 条、阻塞 {_b(cs['blocked'])} 条、未执行 {_b(cs['not_run'])} 条"
+            f"{other_part}，执行通过率为 {_b(cs['pass_rate'])}（通过 ÷ 已执行）。\n"
         )
         lines.append("| 模块 | 用例数 | 已执行 | 通过 | 失败 | 阻塞 | 未执行 | 通过率 |")
         lines.append("| ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- |")
@@ -126,7 +132,7 @@ def _case_exec_section(case_summary: Dict) -> str:
         )
     else:
         lines.append(
-            f"本版本共设计测试用例 {cs['total']} 条。用例表未记录「执行结果」，"
+            f"本版本共设计测试用例 {_b(cs['total'])} 条。用例表未记录「执行结果」，"
             "不输出执行率与通过率（依据防幻觉原则，不补造数字）。\n"
         )
     return "\n".join(lines)
@@ -309,7 +315,7 @@ def render_report(stats: StatsResult, charts: Optional[Dict[str, str]] = None,
                                    three_col=scope_three_col) + "\n")
         # 用例条数以文字说明不占表列（用户 2026-11-20 拍板）；总数取自提取层算好的 case_summary
         if case_summary:
-            parts.append(f"> 本次测试范围共覆盖测试用例 {case_summary['total']} 条，"
+            parts.append(f"> 本次测试范围共覆盖测试用例 {_b(case_summary['total'])} 条，"
                          "执行概况详见 3.3。\n")
     else:
         parts.append((T.TEST_SCOPE_TABLE_3COL if scope_three_col else T.TEST_SCOPE_TABLE) + "\n")
@@ -344,9 +350,9 @@ def render_report(stats: StatsResult, charts: Optional[Dict[str, str]] = None,
     parts.append("# 4. 功能测试执行及测试结果\n")
     parts.append("## 4.1 缺陷分布统计\n")
     parts.append(
-        f"本次版本迭代测试周期内，累计发现缺陷 {s.total} 个。截至统计节点，已关闭 {s.closed} 个，"
-        f"待解决 {s.pending_resolve} 个，待验收 {s.pending_accept} 个，延期 {s.postponed} 个。"
-        f"经核算，整体修复覆盖率为 {s.fix_coverage}。\n"
+        f"本次版本迭代测试周期内，累计发现缺陷 {_b(s.total)} 个。截至统计节点，已关闭 {_b(s.closed)} 个，"
+        f"待解决 {_b(s.pending_resolve)} 个，待验收 {_b(s.pending_accept)} 个，延期 {_b(s.postponed)} 个。"
+        f"经核算，整体修复覆盖率为 {_b(s.fix_coverage)}。\n"
     )
     parts.append(_chart_block(charts, "status_bar", "缺陷状态分布图") + "\n")
     parts.append("### 4.1.1 功能缺陷分布情况\n")
@@ -357,7 +363,7 @@ def render_report(stats: StatsResult, charts: Optional[Dict[str, str]] = None,
         parts.append(_closure_breakdown_table(stats) + "\n")
     parts.append("## 4.2 Bug 激活次数统计\n")
     parts.append(
-        f"本次缺陷总数 {s.total}，激活 ≥1 次的缺陷 {s.activated_ge1_count} 个，激活率 {s.activated_rate}。\n"
+        f"本次缺陷总数 {_b(s.total)}，激活 ≥1 次的缺陷 {_b(s.activated_ge1_count)} 个，激活率 {_b(s.activated_rate)}。\n"
     )
     parts.append(_chart_block(charts, "activated_bar", "Bug 激活次数分布图") + "\n")
     parts.append("## 4.3 每人提交 Bug 数统计\n")
@@ -390,9 +396,9 @@ def render_report(stats: StatsResult, charts: Optional[Dict[str, str]] = None,
         if case_summary and case_summary.get("exec_available"):
             not_passed = case_summary['executed'] - case_summary['passed']
             parts.append(
-                f"本版本共执行测试用例 {case_summary['executed']} 条，"
-                f"通过 {case_summary['passed']} 条（通过率 {case_summary['pass_rate']}），"
-                f"未通过 {not_passed} 条已纳入缺陷跟踪。\n"
+                f"本版本共执行测试用例 {_b(case_summary['executed'])} 条，"
+                f"通过 {_b(case_summary['passed'])} 条（通过率 {_b(case_summary['pass_rate'])}），"
+                f"未通过 {_b(not_passed)} 条已纳入缺陷跟踪。\n"
             )
         parts.append("## 5.1 发布建议\n")
         parts.append(c.release_advice + "\n")
